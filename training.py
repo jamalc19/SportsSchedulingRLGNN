@@ -15,15 +15,6 @@ import torch.nn.functional as F
 
 from collections import namedtuple, deque
 
-#loop
-#2. ENV: outputs list of possible actions v = V \ S
-#3. AGENT: RNG, v* = random step or max of calculated Q values for every v
-#4. AGENT: output v* 
-#5. ENV: v*, update graph (g.selectNode(nodeID))
-#6. ENV: return reward, new state
-#7. Update params (backwards pass)
-#8. Re-encode
-
 #***********************************************************************
 #CLASSES
 #***********************************************************************
@@ -119,8 +110,8 @@ for i in instances:
                pass
                 #Greedy Q action
             
-            #update graph -> return new state, reward
+            #update graph w. action -> return new state, reward
             #cache update in agent.model.memory()
-            #update agent.model
+            #update agent.model using reward and a subset of cached memory
             #check if end condition
             break #TODO take out
