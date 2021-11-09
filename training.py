@@ -7,12 +7,6 @@ import math
 import random
 import copy
 
-import torch
-import torch.nn
-import torch.optim
-import torch.autograd
-import torch.nn.functional as F
-
 from collections import namedtuple, deque
 
 #***********************************************************************
@@ -31,8 +25,16 @@ class Agent(Model):
         super().__init__()
         self.memory = ReplayMemory(128)#TODO decide on replay memory size
 
-    def action(self, state):
-        """Given a state, choose an action"""
+    def action(self, graph: Graph) -> int:
+        """
+        Given a graph in a certain state, pick the next action
+        
+        Parameters
+            graph (Graph): a graph representation of the current state of the instance
+
+        Returns
+            an int corresponding to the idnum of the selected node
+        """
         pass
 
     def cache(self, experience):
@@ -67,7 +69,7 @@ class ReplayMemory(object):
 #*********************************************************************
 # INITIALIZE 
 #*********************************************************************
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+#FIXME device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 #Training Params
 GAMMA = 0.999
@@ -100,16 +102,17 @@ for i in instances:
         #Train
         while True:
 
-            state = graph.getState()
-            actions = graph.getActions()
-
+            #Determine which action to take
             if random.random() <= EPS:
-                pass 
-                #TODO take random action
+                nodeToAdd = random.choice(graph.getActions()) #TODO make sure getActions() returns a list of ints
             else:
-               pass
-                #Greedy Q action
+                nodeToAdd = agent.action(graph) #forward pass
             
+            #Take action
+            graph.select(nodeToAdd) #TODO verify this call
+
+            
+
             #update graph w. action -> return new state, reward
             #cache update in agent.model.memory()
             #update agent.model using reward and a subset of cached memory
