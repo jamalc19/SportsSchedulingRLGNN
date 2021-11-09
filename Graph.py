@@ -14,12 +14,19 @@ class Graph:
         self.hardconstraintcost=hardconstraintcost
         self.costconstant=0 #Some constraints are easier to model by giving the graph a cost and then subtracting the cost if nodes are selected.
         self.complexconstraints={} #complexid: list of edges related to this complex constraint
+        self.complexidcounter=0
         self.solution=[] #list of ids of the selected nodes
 
     def deletenode(self, hometeam, awayteam, slot):
         idnum = self.nodemapping.get((hometeam, awayteam, slot))
         if idnum is None:
             return #node has already been deleted
+        for complexconstraint in self.nodedict[idnum].edges_hard_complex:
+            #TODO
+            pass
+        for complexconstraint in self.nodedict[idnum].edges_soft_complex:
+            #TODO
+            pass
         self.nodedict[idnum].delete()
         del self.nodedict[idnum]
         del self.nodemapping[(hometeam, awayteam, slot)]
@@ -37,6 +44,49 @@ class Graph:
         del self.nodemapping[(node.hometeam, node.awayteam, node.slot)]
         node.delete()
 
+    def selectnode(self,nodeid):
+        affectedcomplexconstraintids = self.nodedict[nodeid].select()
+        self.solution.append(nodeid)
+        for C_id in affectedcomplexconstraintids:
+            self.updatecomplexconstraint(C_id)
+        return #TODO return reward
+
+    def updatecomplexconstraint(self,C_id):
+        pass
+        #TODO
+
+    def addEdge(self, node1,node2,weight,hard=False,Complex=False, complexid=None):
+        #if edge already exists then increment cost. If complex then add complex id
+        #else create new edge
+        if hard:
+            if Complex:
+                edge = node1.edges_hard_complex.get(node2.id)
+                if edge is not None:
+                    edge.addweight(weight)
+                    edge.complexids.append(complexid)
+                else:
+                    Edge(node1, node2, weight, hard, Complex, complexid)
+            else:
+                edge = node1.edges_hard.get(node2.id)
+                if edge is not None:
+                    edge.addweight(weight)
+                else:
+                    Edge(node1, node2, weight, hard, Complex, complexid)
+        else:
+            if Complex:
+                edge=node1.edges_soft_complex.get(node2.id)
+                if edge is not None:
+                    edge.addweight(weight)
+                    edge.complexids.append(complexid)
+                else:
+                    Edge(node1, node2, weight, hard, Complex, complexid)
+            else:
+                edge = node1.edges_soft.get(node2.id)
+                if edge is not None:
+                    edge.addweight(weight)
+                else:
+                    Edge(node1, node2, weight, hard, Complex, complexid)
+
     def addonegameperweekconstraints(self):
         for slot in self.slots:
             for team in self.teams:
@@ -52,7 +102,7 @@ class Graph:
                 for i in range(len(nodes)-1):
                     for j in range(i+1,len(nodes)):
                         if nodes[i].edges_hard.get(nodes[j]) is not None:  #avoid adding the same constraint twice
-                            Edge(nodes[i],nodes[j],weight=self.hardconstraintcost,hard=True)
+                            self.addEdge(nodes[i],nodes[j],weight=self.hardconstraintcost,hard=True)
 
     def adduniquematchupconstraints(self):
         for hometeam in self.teams:
@@ -65,7 +115,7 @@ class Graph:
                             nodes.append(self.nodedict[nodeid])
                     for i in range(len(nodes) - 1):
                         for j in range(i + 1, len(nodes)):
-                            Edge(nodes[i], nodes[j], weight=self.hardconstraintcost, hard=True)
+                            self.addEdge(nodes[i], nodes[j], weight=self.hardconstraintcost, hard=True)
 
     def addphasedconstraints(self):
         midpoint = int(len(self.slots)/2)
@@ -83,7 +133,7 @@ class Graph:
                         nodelist2.append(self.nodedict[nodeid])
                 for n1 in nodelist1:
                     for n2 in nodelist2:
-                        Edge(n1, n2, weight=self.hardconstraintcost, hard=True)
+                        self.addEdge(n1, n2, weight=self.hardconstraintcost, hard=True)
 
                 #second half
                 nodelist1=[] #list of games where team i is home against team j
@@ -97,27 +147,78 @@ class Graph:
                         nodelist2.append(self.nodedict[nodeid])
                 for n1 in nodelist1:
                     for n2 in nodelist2:
-                        Edge(n1, n2, weight=self.hardconstraintcost, hard=True)
+                        self.addEdge(n1, n2, weight=self.hardconstraintcost, hard=True)
 
     def addCA1(self, C):
         penalty=int(C.get('penalty'))
         team = C.get('teams')
         mode = C.get('mode')
         hard= C.get('type')=='HARD'
+        if hard:
+            penalty=self.hardconstraintcost
         slots= C.get('slots').split(';')
         Max = int(C.get('max'))
-        Min = int(C.get('min'))
-        if (Max==0) and (hard):
-            for s in slots:
-                if mode=='H':
-                    # remove all home games in this slot
+        if (Max==0):
+            if hard:
+                for s in slots:
+                    if mode=='H':
+                        # remove all home games in this slot
+                        for awayteam in self.teams:
+                            if team!=awayteam:
+                                self.deletenode(team, awayteam, s)
+                    else:
+                        # remove all away games in this slot
+                        for hometeam in self.teams:
+                            if team != hometeam:
+                                self.deletenode(hometeam, team, s)
+            else: #soft
+                for s in slots:
+                    if mode=='H':
+                        # add cost to all home games in this slot
+                        for awayteam in self.teams:
+                            if team!=awayteam:
+                                nodeid = self.nodemapping.get((team, awayteam, s))
+                                if nodeid is not None:
+                                    self.nodedict[nodeid].addcost(penalty)
+                    else:
+                        # add cost to all away games in this slot
+                        for hometeam in self.teams:
+                            if team != hometeam:
+                                nodeid = self.nodemapping.get((hometeam, team, s))
+                                if nodeid is not None:
+                                    self.nodedict[nodeid].addcost(penalty)
+
+        if Max==1:# add constraint between every game in a slot to every game in another slot
+            slotgames=[] #list of lists. Inner list has all the relevant games of a team in a given slot
+            for slot in slots:
+                games=[]
+                if mode == 'H':
+                    # add cost to all home games in this slot
                     for awayteam in self.teams:
-                        self.deletenode(team, awayteam, s)
+                        if team != awayteam:
+                            nodeid = self.nodemapping.get((team, awayteam, slot))
+                            if nodeid is not None:
+                                games.append(self.nodedict[nodeid])
                 else:
-                    # remove all away games in this slot
+                    # add cost to all away games in this slot
                     for hometeam in self.teams:
-                        self.deletenode(hometeam, team, s)
-        #TODO
+                        if team != hometeam:
+                            nodeid = self.nodemapping.get((hometeam, team, slot))
+                            if nodeid is not None:
+                                games.append(self.nodedict[nodeid])
+                slotgames.append(games)
+            for i in range(len(slots)-1):
+                    for j in range(i,len(slots)):
+                        for node_i in slotgames[i]:
+                            for node_j in slotgames[j]:
+                                self.addEdge(node_i, node_j, weight=penalty, hard=hard)
+        else:#max>=2
+            # add complex constraint between every game in a slot to every game in another slot
+            pass
+
+            #if max>=2
+            #add complex constraints
+            #TODO
 
     def addCA2(self, C):
         penalty=int(C.get('penalty'))
@@ -187,8 +288,7 @@ class Graph:
                 for m in meetings:
                     #add game to solution
                     nodeid=self.nodemapping[(m[0],m[1],s)]
-                    self.nodedict[nodeid].selected=True
-                    self.solution.append(nodeid)
+                    self.selectnode(nodeid)
                     #remove other possible games for these teams in this slot
                     for team in self.teams:
                         if team not in m:
@@ -224,34 +324,6 @@ class Graph:
         pass
 
 
-
-def organizeCAconstraints(capacityconstraints):
-    CA1=[]
-    CA1nodeeliminating=[]
-    CA2=[]
-    CA2nodeeliminating=[]
-    CA3=[]
-    CA4=[]
-    for c in capacityconstraints:
-        if c.tag =='CA1':
-            if (c.get('max')=='0') and (c.get('type')=='HARD'):
-                CA1nodeeliminating.append(c.attrib)
-            else:
-                CA1.append(c.attrib)
-        elif c.tag == 'CA2':
-            if (c.get('max')=='0') and (c.get('type')=='HARD'):
-                CA2nodeeliminating.append(c.attrib)
-            else:
-                CA2.append(c.attrib)
-        elif c.tag == 'CA3':
-            CA3.append(c.attrib)
-        elif c.tag == 'CA4':
-            CA4.append(c.attrib)
-        else:
-            print("unkown constraint", c.attrib)
-    return CA1,CA2,CA3,CA4,CA1nodeeliminating,CA2nodeeliminating
-
-
 def creategraph(path, hardconstraintcost=100):
     tree = ET.parse(path)
     root=tree.getroot()
@@ -275,29 +347,27 @@ def creategraph(path, hardconstraintcost=100):
     fairnessconstraints = constraints.find('FairnessConstraints')
     separationconstraints =constraints.find('SeparationConstraints')
 
-    CA1,CA2,CA3,CA4,CA1nodeeliminating,CA2nodeeliminating = organizeCAconstraints(capacityconstraints)
-    #add node eleiminating CA constraints first
-    for C in CA1nodeeliminating:
-        G.addCA1(C)
-    for C in CA2nodeeliminating:
-        G.addCA2(C)
-    #add GA1 constraints some of which are node eliminating
-    for GA1 in gameconstraints:
-        G.addGA1(GA1.attrib)
+    # Doing node eliminating constraints first doesn't increase efficiency by much, so add constraints in readable order
     #add standard constraints of the double round robin format
     G.addonegameperweekconstraints()
     G.adduniquematchupconstraints()
     if phased:
         G.addphasedconstraints()
-    #Add remaining CA constraints
-    for C in CA1:
-        G.addCA1(C)
-    for C in CA2:
-        G.addCA2(C)
-    for C in CA3:
-        G.addCA3(C)
-    for C in CA4:
-        G.addCA4(C)
+
+    #add GA1 constraints some of which are node eliminating
+    for GA1 in gameconstraints:
+        G.addGA1(GA1.attrib)
+
+    #add CA constraints. Some of CA1 and CA2 are node eliminating.
+    for C in capacityconstraints:
+        if C.tag=='CA1':
+            G.addCA1(C)
+        elif C.tag=='CA2':
+            G.addCA2(C)
+        elif C.tag=='CA3':
+            G.addCA3(C)
+        elif C.tag=='CA4':
+            G.addCA4(C)
     #add break constraints
     for B in breakconstraints:
         if B.tag=='BR1':
