@@ -1,26 +1,26 @@
 #DEPENDENCIES
-import Graph
-#TODO import model
-import s2v_scheduling
 import numpy as np
-import math
 import random
 import copy
+import os
+import torch
 
 from collections import namedtuple, deque
+from Graph import Graph, creategraph
+from s2v_scheduling import Model
 
 #*********************************************************************
 # INITIALIZE 
 #*********************************************************************
-#FIXME device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 #Training Params
 GAMMA = 0.999
 EPS = 0.333
 TARGET_UPDATE = 10
 EMBED_SIZE = 128
-#TODO Decaying epsilon, relay memory
-#BATCH_SIZE = 128
+BATCH_SIZE = 128
+EPISODES = 100
+#TODO Decaying epsilon, relay memory, remove constants from global
 #EPS_START = 0.9
 #EPS_END = 0.05
 #EPS_DECAY = 200
@@ -31,26 +31,34 @@ instances = [creategraph('Instances/'+file) for file in os.listdir('Instances/')
 for i in instances:
     print(len(i.teams),len(i.nodedict), len(i.nodedict)/(2*len(i.teams)*(len(i.teams)-1)**2)) #max num of nodes is 2*n*(n-1)^2
 
+#Use cuda
+#FIXME device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+use_cuda = torch.cuda.is_available()
+print(f"Using CUDA: {use_cuda}")
+
 
 #***********************************************************************
 #CLASSES
 #***********************************************************************
-
-#Placeholder class so pylint doesn't get mad 
 
 class Agent:
     """
     Wrapper class holding the model to train, and a cache of previous steps
 
     Attributes
-        model
         memory
+        model
+        use_cuda
     """
 
     def __init__(self) -> None:
         super().__init__()
-        self.memory = ReplayMemory(128)#TODO decide on replay memory size
-        self.model = Model(EMBED_SIZE)#TODO decide on embedding size
+        self.memory = deque(maxlen=1000)#TODO decide on replay memory size
+        self.model = Model(EMBED_SIZE)
+
+        self.use_cuda = torch.cuda.is_available()
+        if self.use_cuda:
+            self.net = self.model.to(device="cuda")
     
     def action(self, graph: Graph) -> int:
         """
@@ -80,47 +88,61 @@ class Agent:
         return actionID, action
 
 
-    def cache(self, state, newState, action, reward):
-        """Add the experience to memory"""
-        pass
+    def cache(self, state, next_state, action, reward, done):
+        """
+        Store the experience to self.memory (replay buffer)
+
+        Inputs:
+        state (list),
+        next_state (list),
+        action (list),
+        reward () #TODO decide on datatype 
+        done(bool) #FIXME decide when done
+        """
+
+        if self.use_cuda:
+            state = torch.tensor(state).cuda()
+            next_state = torch.tensor(next_state).cuda()
+            action = torch.tensor(action).cuda()
+            reward = torch.tensor([reward]).cuda() #TODO get rid of list comprehension?
+            #TODO done = torch.tensor([done]).cuda()
+        else:
+            state = torch.tensor(state)
+            next_state = torch.tensor(next_state)
+            action = torch.tensor(action)
+            reward = torch.tensor([reward])#TODO get rid of list comprehension?
+            #TODO done = torch.tensor([done])
+
+        self.memory.append((state, next_state, action, reward, done,))
 
     def recall(self):
-        """Sample experiences from memory"""
-        pass
+        """
+        Retrieve a batch of experiences from memory
+        """
+        batch = random.sample(self.memory, BATCH_SIZE)
+        state, next_state, action, reward, done = map(torch.stack, zip(*batch))
+
+        return state, next_state, action.squeeze(), reward.squeeze(), done.squeeze() #TODO remove squeeze
 
     def learn(self):
         """Backwards pass for model"""
         pass
 
-#Class to hold replay mem training cache
-class ReplayMemory(object):
-
-    def __init__(self, capacity):
-        self.memory = deque([],maxlen=capacity)
-
-    def push(self, *args):
-        """Save a transition"""
-        self.memory.append(Transition(*args))
-
-    def sample(self, batch_size):
-        return random.sample(self.memory, batch_size)
-
-    def __len__(self):
-        return len(self.memory)
 
 #***********************************************************************
 #TRAINING
 #***********************************************************************
+
 #Create agent
 agent = Agent()
 
+#Training loop
 for i in instances:
     
-    episodes = 10 #TODO decide on reasonable # of episodes
-    for e in range(episodes):
+    for e in range(EPISODES):
 
         graph = copy.deepcopy(i) #TODO make more efficient
-        state = np.zeros(EMBED_SIZE) #TODO determine length of vector
+        state = np.zeros(EMBED_SIZE)
         t = 1
 
         #Training
@@ -136,7 +158,7 @@ for i in instances:
             newState = np.add(state, action)
 
             #Cache result
-            agent.cache(state, newState, action, reward)
+            agent.cache(state, newState, action, reward, 0)#FIXME add 'done' signal
 
             #Train
             if t >= TARGET_UPDATE:
