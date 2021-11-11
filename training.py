@@ -52,7 +52,7 @@ class Agent(Model):
     def __init__(self) -> None:
         super().__init__()
         self.memory = ReplayMemory(128)#TODO decide on replay memory size
-        self.model = Model()#TODO
+        self.model = Model(128)#TODO decide on embedding size
     
     def action(self, graph: Graph) -> int:
         """
@@ -62,22 +62,24 @@ class Agent(Model):
             graph (Graph): a graph representation of the current state of the instance
 
         Returns
-            an int corresponding to the idnum of the selected node
-            an embedded node
+            actionID: the nodeID of the selected node
+            action: the embedding for the corresponding nodeID
         """
-        encodedGraph = self.model.encodeGraph(graph)
-        actionList = np.array()
+        graphEmbeddings = self.model.structure2vec(graph)
 
+        qValueDict = {}
         for nodeID in graph.getActions():
-            actionList.append(nodeID, self.model.estimateQ(encodedGraph, nodeID))
+            qValueDict[nodeID] = self.model.estimateQ(graphEmbeddings, nodeID)
 
+        #eps-greedy action
+        if random.random() <= EPS: #select random node to add
+            actionID = random.choice(list(qValueDict.keys()))
+        else: #select node with highest q
+            actionID = max(qValueDict, key=qValueDict.get)
+        
+        action = graphEmbeddings[actionID]
 
-        if random.random() <= EPS:
-                nodeToAdd, nodeEmbedding = random.choice(list(actionDict.items())) #TODO make sure getActions() returns a list of possible actions
-        else:
-                
-
-        return nodeToAdd, nodeEmbedding
+        return actionID, action
 
 
     def cache(self, state, newState, action, reward):
