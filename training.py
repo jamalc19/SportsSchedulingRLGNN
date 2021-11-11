@@ -9,6 +9,28 @@ import copy
 
 from collections import namedtuple, deque
 
+#*********************************************************************
+# INITIALIZE 
+#*********************************************************************
+#FIXME device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+#Training Params
+GAMMA = 0.999
+EPS = 0.333
+TARGET_UPDATE = 10
+#TODO Decaying epsilon, relay memory
+#BATCH_SIZE = 128
+#EPS_START = 0.9
+#EPS_END = 0.05
+#EPS_DECAY = 200
+
+
+#Load instances
+instances = [creategraph('Instances/'+file) for file in os.listdir('Instances/')]
+for i in instances:
+    print(len(i.teams),len(i.nodedict), len(i.nodedict)/(2*len(i.teams)*(len(i.teams)-1)**2)) #max num of nodes is 2*n*(n-1)^2
+
+
 #***********************************************************************
 #CLASSES
 #***********************************************************************
@@ -18,26 +40,41 @@ from collections import namedtuple, deque
 class Model:
     pass 
 
-#Wrapper class holding model and memory, will handle the prediction and learning steps
 class Agent(Model):
+    """
+    Wrapper class holding the model to train, and a cache of previous steps
+
+    Attributes
+        model
+        memory
+    """
 
     def __init__(self) -> None:
         super().__init__()
         self.memory = ReplayMemory(128)#TODO decide on replay memory size
-
+        self.state = np.array()#FIXME
+    
     def action(self, graph: Graph) -> int:
         """
-        Given a graph in a certain state, pick the next action
+        Given a graph, update the current state (struc2vec) and pick the next action (Q-value)
         
         Parameters
             graph (Graph): a graph representation of the current state of the instance
 
         Returns
             an int corresponding to the idnum of the selected node
+            an embedded node
         """
-        pass
+        for i in graph.getActions():
+            #calculate Q values
 
-    def cache(self, experience):
+        if random.random() <= EPS:
+                action = random.choice(graph.getActions()) #TODO make sure getActions() returns a list of possible actions
+                #TODO select encoded node
+        else:
+
+
+    def cache(self, state, newState, action, reward):
         """Add the experience to memory"""
         pass
 
@@ -45,8 +82,8 @@ class Agent(Model):
         """Sample experiences from memory"""
         pass
 
-    def update(self):
-        """Update online action value (Q) function with a batch of experiences"""
+    def learn(self):
+        """Backwards pass for model"""
         pass
 
 #Class to hold replay mem training cache
@@ -65,55 +102,40 @@ class ReplayMemory(object):
     def __len__(self):
         return len(self.memory)
 
-
-#*********************************************************************
-# INITIALIZE 
-#*********************************************************************
-#FIXME device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-#Training Params
-GAMMA = 0.999
-EPS = 0.333
-#TODO Decaying epsilon, relay memory
-#BATCH_SIZE = 128
-#EPS_START = 0.9
-#EPS_END = 0.05
-#EPS_DECAY = 200
-#TARGET_UPDATE = 10
-
-#Load instances
-instances = [creategraph('Instances/'+file) for file in os.listdir('Instances/')]
-for i in instances:
-    print(len(i.teams),len(i.nodedict), len(i.nodedict)/(2*len(i.teams)*(len(i.teams)-1)**2)) #max num of nodes is 2*n*(n-1)^2
-
-#Create agent
-agent = Agent()
-
 #***********************************************************************
 #TRAINING
 #***********************************************************************
+#Create agent
+agent = Agent()
+
 for i in instances:
     
     episodes = 10 #TODO decide on reasonable # of episodes
     for e in range(episodes):
 
         graph = copy.deepcopy(i) #TODO make more efficient
-        
-        #Train
+        state = np.zeros(embedLength) #TODO determine length of vector
+        t = 1
+
+        #Training
         while True:
 
             #Determine which action to take
-            if random.random() <= EPS:
-                nodeToAdd = random.choice(graph.getActions()) #TODO make sure getActions() returns a list of ints
-            else:
-                nodeToAdd = agent.action(graph) #forward pass
+            action, nodeToAdd = agent.action(graph)
             
-            #Take action
-            graph.select(nodeToAdd) #TODO verify this call
+            #Take action, recieve reward
+            reward = graph.select(nodeToAdd)
 
-            
-            #update graph w. action -> return new state, reward
-            #cache update in agent.model.memory()
-            #update agent.model using reward and a subset of cached memory
-            #check if end condition
-            break #TODO take out
+            #Update state
+            newState = state + np.array(list(action))#FIXME
+
+            #Cache result
+            agent.cache(state, newState, action, reward)
+
+            #Train
+            if t >= TARGET_UPDATE:
+                agent.learn()
+            else:
+                t += 1
+
+            break #TODO figure out break condition
