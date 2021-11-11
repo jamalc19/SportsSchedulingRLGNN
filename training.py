@@ -1,7 +1,7 @@
 #DEPENDENCIES
 import Graph
 #TODO import model
-
+import s2v_scheduling
 import numpy as np
 import math
 import random
@@ -18,6 +18,7 @@ from collections import namedtuple, deque
 GAMMA = 0.999
 EPS = 0.333
 TARGET_UPDATE = 10
+EMBED_SIZE = 128
 #TODO Decaying epsilon, relay memory
 #BATCH_SIZE = 128
 #EPS_START = 0.9
@@ -35,12 +36,9 @@ for i in instances:
 #CLASSES
 #***********************************************************************
 
-#Placeholder class so pylint doesn't get mad
-#TODO Bing to create model
-class Model:
-    pass 
+#Placeholder class so pylint doesn't get mad 
 
-class Agent(Model):
+class Agent:
     """
     Wrapper class holding the model to train, and a cache of previous steps
 
@@ -52,7 +50,7 @@ class Agent(Model):
     def __init__(self) -> None:
         super().__init__()
         self.memory = ReplayMemory(128)#TODO decide on replay memory size
-        self.model = Model(128)#TODO decide on embedding size
+        self.model = Model(EMBED_SIZE)#TODO decide on embedding size
     
     def action(self, graph: Graph) -> int:
         """
@@ -122,20 +120,20 @@ for i in instances:
     for e in range(episodes):
 
         graph = copy.deepcopy(i) #TODO make more efficient
-        state = np.zeros(embedLength) #TODO determine length of vector
+        state = np.zeros(EMBED_SIZE) #TODO determine length of vector
         t = 1
 
         #Training
         while True:
 
             #Determine which action to take
-            nodeToAdd, nodeEmbedding = agent.action(graph)
+            nodeToAdd, action = agent.action(graph)
             
             #Take action, recieve reward
             reward = graph.select(nodeToAdd)
 
             #Update state
-            newState = state + np.array(list(action))#FIXME
+            newState = np.add(state, action)
 
             #Cache result
             agent.cache(state, newState, action, reward)
@@ -145,5 +143,7 @@ for i in instances:
                 agent.learn()
             else:
                 t += 1
+            
+            state = newState
 
             break #TODO figure out break condition
