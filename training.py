@@ -52,7 +52,7 @@ class Agent(Model):
     def __init__(self) -> None:
         super().__init__()
         self.memory = ReplayMemory(128)#TODO decide on replay memory size
-        self.state = np.array()#FIXME
+        self.model = Model()#TODO
     
     def action(self, graph: Graph) -> int:
         """
@@ -65,13 +65,19 @@ class Agent(Model):
             an int corresponding to the idnum of the selected node
             an embedded node
         """
-        for i in graph.getActions():
-            #calculate Q values
+        encodedGraph = self.model.encodeGraph(graph)
+        actionList = np.array()
+
+        for nodeID in graph.getActions():
+            actionList.append(nodeID, self.model.estimateQ(encodedGraph, nodeID))
+
 
         if random.random() <= EPS:
-                action = random.choice(graph.getActions()) #TODO make sure getActions() returns a list of possible actions
-                #TODO select encoded node
+                nodeToAdd, nodeEmbedding = random.choice(list(actionDict.items())) #TODO make sure getActions() returns a list of possible actions
         else:
+                
+
+        return nodeToAdd, nodeEmbedding
 
 
     def cache(self, state, newState, action, reward):
@@ -121,7 +127,7 @@ for i in instances:
         while True:
 
             #Determine which action to take
-            action, nodeToAdd = agent.action(graph)
+            nodeToAdd, nodeEmbedding = agent.action(graph)
             
             #Take action, recieve reward
             reward = graph.select(nodeToAdd)
