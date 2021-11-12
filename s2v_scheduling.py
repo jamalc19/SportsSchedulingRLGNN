@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import copy
 
+
 class Model(nn.Module):
     def __init__(self, p_dim):
         super(Model, self).__init__()
@@ -16,6 +17,10 @@ class Model(nn.Module):
         self.theta9_softcomplex = nn.Linear(1, p_dim, bias=False)  # sc
         self.theta10_node = nn.Linear(3, p_dim, bias=False)  # xi
 
+        self.thetaQ1 = nn.Linear(2*p_dim, 1, bias=False)
+        self.thetaQ2 = nn.Linear(p_dim, p_dim, bias=False)
+        self.thetaQ3 = nn.Linear(p_dim, p_dim, bias=False)
+
     def forward(self, xi, mu_N, h, hc, s, sc):
         tmp = self.theta1(torch.sum(mu_N, 0)) + \
               self.theta2(torch.sum(torch.relu(self.theta3_hard(h)), 0)) + \
@@ -26,6 +31,14 @@ class Model(nn.Module):
         mu = torch.relu(tmp + self.theta10_node(xi))
 
         return mu
+
+    def q_function(self, mu_all, mu_node):
+        q_inner = torch.cat((self.thetaQ2(torch.sum(mu_all, 0)), self.thetaQ3(mu_node)), 0)
+
+        q = self.thetaQ1(torch.relu(q_inner))
+
+        return q
+
 
 def edge_weights(mu_all, node, nd_edges):
     mu_N = []
@@ -45,6 +58,7 @@ def edge_weights(mu_all, node, nd_edges):
 
     return mu_N, weights
 
+
 def structure2vec(graph, p_dim=128, t=4):  # t is iterations which is rec'd as 4
     node_list = copy.deepcopy(graph)
     ser_num_list = []
@@ -56,7 +70,7 @@ def structure2vec(graph, p_dim=128, t=4):  # t is iterations which is rec'd as 4
 
     mu_all = torch.zeros(node_num, p_dim)
     s2v = Model(p_dim)
-    x_all = []
+    #x_all = []
 
     for _ in range(t):
         for node in node_list.nodedict:
@@ -87,18 +101,29 @@ def structure2vec(graph, p_dim=128, t=4):  # t is iterations which is rec'd as 4
             hc = torch.Tensor(hc).unsqueeze(1)
             s = torch.Tensor(s).unsqueeze(1)
             sc = torch.Tensor(sc).unsqueeze(1)
-            xi = []
-
-            xi.append(int(node_list.nodedict[node].hometeam))
-            xi.append(int(node_list.nodedict[node].awayteam))
-            xi.append(int(node_list.nodedict[node].slot))
+            xi = [int(node_list.nodedict[node].hometeam),
+                  int(node_list.nodedict[node].awayteam),
+                  int(node_list.nodedict[node].slot)]
 
             xi = torch.Tensor(xi)
 
-            mu_all[node_list.nodedict[node].id] = s2v(xi,mu_N, h, hc, s, sc)
-            x_all.append(xi)
+            mu_all[node_list.nodedict[node].id] = s2v(xi, mu_N, h, hc, s, sc)
+            #x_all.append(xi)
 
-        return x_all, mu_all, ser_num_list
+        return dict(zip(ser_num_list, mu_all.data))
+
+
+def q_calc(embedding_dict, node_num, p_dim=128):
+    q2v = Model(p_dim)
+
+    mu_all = [embedding_dict[i] for i in embedding_dict]
+
+    mu_all = torch.stack(mu_all, 0)
+    mu_node = embedding_dict[node_num]
+
+    q_val = q2v.q_function(mu_all, mu_node)
+
+    return q_val
 
 
 if __name__ == '__main__':
@@ -109,9 +134,10 @@ if __name__ == '__main__':
     torch.set_printoptions(threshold=np.nan)
 
     graphs = [creategraph('Instances/' + file) for file in os.listdir('Instances/')]
-    x_all, mu_all, ser_num_list = structure2vec(graphs[-1])
+    node_embedding = structure2vec(graphs[-1])
 
-    print(x_all)
-    print(mu_all)
-    print(ser_num_list)
+    print(node_embedding)
 
+    q_calculation1 = q_calc(node_embedding, 1)
+
+    print(q_calculation1)
