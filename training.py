@@ -72,7 +72,7 @@ class Agent:
             actionID: the nodeID of the selected node
             action: the embedding for the corresponding nodeID
         """
-        graphEmbeddings = Model.structure2vec(graph) #FIXME won't use the correct model
+        graphEmbeddings = Model.structure2vec(self.model, graph) #FIXME won't use the correct model
         
         qValueDict = {}
         for nodeID in graph.getActions():
