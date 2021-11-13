@@ -59,7 +59,7 @@ def edge_weights(mu_all, node, nd_edges):
     return mu_N, weights
 
 
-def structure2vec(graph, p_dim=128, t=4):  # t is iterations which is rec'd as 4
+def structure2vec(s2v: Model, graph, p_dim=128, t=4):  # t is iterations which is rec'd as 4
     node_list = copy.deepcopy(graph)
     ser_num_list = []
 
@@ -69,7 +69,6 @@ def structure2vec(graph, p_dim=128, t=4):  # t is iterations which is rec'd as 4
     node_num = len(node_list.nodedict)
 
     mu_all = torch.zeros(node_num, p_dim)
-    s2v = Model(p_dim)
     #x_all = []
 
     for _ in range(t):
