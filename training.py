@@ -74,7 +74,7 @@ class Agent:
             actionID: the nodeID of the selected node
             action: the embedding for the corresponding nodeID
         """
-        graphEmbeddings = Model.structure2vec(self.model, graph) #FIXME won't use the correct model
+        graphEmbeddings = structure2vec(self.model, graph)
         
         qValueDict = {}
         for nodeID in graph.getActions():
@@ -105,15 +105,15 @@ class Agent:
 
         if self.use_cuda:
             state = torch.tensor(state).cuda()
-            nextState = torch.tensor(next_state).cuda()
+            nextState = torch.tensor(nextState).cuda()
             action = torch.tensor(action).cuda()
-            reward = torch.tensor([reward]).cuda() #TODO get rid of list comprehension?
+            reward = torch.tensor([reward]).cuda()
             done = torch.tensor([done]).cuda()
         else:
             state = torch.tensor(state)
-            nextState = torch.tensor(next_state)
+            nextState = torch.tensor(nextState)
             action = torch.tensor(action)
-            reward = torch.tensor([reward])#TODO get rid of list comprehension?
+            reward = torch.tensor([reward])
             done = torch.tensor([done])
 
         self.memory.append((state, nextState, action, reward, done,))
@@ -124,6 +124,7 @@ class Agent:
         Retrieve a batch of experiences from memory
 
         Returns
+            random 
             state:
             next_state:
             action: 
@@ -190,4 +191,4 @@ for i in instances:
             #Update state
             state = nextState
 
-            break #TODO figure out break condition
+            break
