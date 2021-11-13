@@ -3,11 +3,13 @@ import numpy as np
 import random
 import copy
 import os
+
 import torch
+import torch.optim as optim
 
 from collections import namedtuple, deque
 from Graph import Graph, creategraph
-from s2v_scheduling import Model
+from s2v_scheduling import Model, structure2vec
 
 #*********************************************************************
 # INITIALIZE 
@@ -89,7 +91,7 @@ class Agent:
         return actionID, action.toList() #int, list
 
 
-    def cache(self, state, next_state, action, reward, done):
+    def cache(self, state, nextState, action, reward, done):
         """
         Store the experience to self.memory (replay buffer)
 
@@ -103,18 +105,18 @@ class Agent:
 
         if self.use_cuda:
             state = torch.tensor(state).cuda()
-            next_state = torch.tensor(next_state).cuda()
+            nextState = torch.tensor(next_state).cuda()
             action = torch.tensor(action).cuda()
             reward = torch.tensor([reward]).cuda() #TODO get rid of list comprehension?
             done = torch.tensor([done]).cuda()
         else:
             state = torch.tensor(state)
-            next_state = torch.tensor(next_state)
+            nextState = torch.tensor(next_state)
             action = torch.tensor(action)
             reward = torch.tensor([reward])#TODO get rid of list comprehension?
             done = torch.tensor([done])
 
-        self.memory.append((state, next_state, action, reward, done,))
+        self.memory.append((state, nextState, action, reward, done,))
 
 
     def recall(self):
@@ -122,15 +124,24 @@ class Agent:
         Retrieve a batch of experiences from memory
 
         Returns
+            state:
+            next_state:
+            action: 
+            reward:
+            done:
             
         """
         batch = random.sample(self.memory, BATCH_SIZE)
-        state, next_state, action, reward, done = map(torch.stack, zip(*batch))
+        state, nextState, action, reward, done = map(torch.stack, zip(*batch))
 
-        return state, next_state, action.squeeze(), reward.squeeze(), done.squeeze() #TODO remove squeeze?
+        return state, nextState, action.squeeze(), reward.squeeze(), done.squeeze() #TODO remove squeeze?
 
     def learn(self):
         """Backwards pass for model"""
+
+        state, nextState, action, reward, done = self.recall()
+        optimizer = optim.SGD(self.model.parameters(), lr=0.01, momentum=0.9) #TODO tune params
+
         pass
 
 
@@ -161,10 +172,10 @@ for i in instances:
             reward, done = graph.select(nodeToAdd)
 
             #Determine state t+1
-            newState = np.add(state, action)
+            nextState = np.add(state, action)
 
             #Cache result
-            agent.cache(state, newState, action, reward, done)
+            agent.cache(state, nextState, action, reward, done)
 
             #Train
             if t >= TARGET_UPDATE:
@@ -177,6 +188,6 @@ for i in instances:
                 done = True
             
             #Update state
-            state = newState
+            state = nextState
 
             break #TODO figure out break condition
