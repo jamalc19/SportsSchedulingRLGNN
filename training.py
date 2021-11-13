@@ -60,6 +60,7 @@ class Agent:
         if self.use_cuda:
             self.net = self.model.to(device="cuda")
     
+
     def action(self, graph: Graph) -> int:
         """
         Given a graph, update the current state (struc2vec) and pick the next action (Q-value)
@@ -71,8 +72,8 @@ class Agent:
             actionID: the nodeID of the selected node
             action: the embedding for the corresponding nodeID
         """
-        graphEmbeddings = self.model.structure2vec(graph)
-
+        graphEmbeddings = Model.structure2vec(graph) #FIXME won't use the correct model
+        
         qValueDict = {}
         for nodeID in graph.getActions():
             qValueDict[nodeID] = self.model.estimateQ(graphEmbeddings, nodeID)
@@ -85,7 +86,7 @@ class Agent:
         
         action = graphEmbeddings[actionID]
 
-        return actionID, action
+        return actionID, action.toList() #int, list
 
 
     def cache(self, state, next_state, action, reward, done):
@@ -105,24 +106,28 @@ class Agent:
             next_state = torch.tensor(next_state).cuda()
             action = torch.tensor(action).cuda()
             reward = torch.tensor([reward]).cuda() #TODO get rid of list comprehension?
-            #TODO done = torch.tensor([done]).cuda()
+            done = torch.tensor([done]).cuda()
         else:
             state = torch.tensor(state)
             next_state = torch.tensor(next_state)
             action = torch.tensor(action)
             reward = torch.tensor([reward])#TODO get rid of list comprehension?
-            #TODO done = torch.tensor([done])
+            done = torch.tensor([done])
 
         self.memory.append((state, next_state, action, reward, done,))
+
 
     def recall(self):
         """
         Retrieve a batch of experiences from memory
+
+        Returns
+            
         """
         batch = random.sample(self.memory, BATCH_SIZE)
         state, next_state, action, reward, done = map(torch.stack, zip(*batch))
 
-        return state, next_state, action.squeeze(), reward.squeeze(), done.squeeze() #TODO remove squeeze
+        return state, next_state, action.squeeze(), reward.squeeze(), done.squeeze() #TODO remove squeeze?
 
     def learn(self):
         """Backwards pass for model"""
@@ -143,29 +148,35 @@ for i in instances:
 
         graph = copy.deepcopy(i) #TODO make more efficient
         state = np.zeros(EMBED_SIZE)
-        t = 1
+        done = False
+        t = 1 #TODO set training delay
 
         #Training
-        while True:
+        while not done:
 
             #Determine which action to take
             nodeToAdd, action = agent.action(graph)
             
             #Take action, recieve reward
-            reward = graph.select(nodeToAdd)
+            reward, done = graph.select(nodeToAdd)
 
-            #Update state
+            #Determine state t+1
             newState = np.add(state, action)
 
             #Cache result
-            agent.cache(state, newState, action, reward, 0)#FIXME add 'done' signal
+            agent.cache(state, newState, action, reward, done)
 
             #Train
             if t >= TARGET_UPDATE:
                 agent.learn()
             else:
                 t += 1
+
+            #TODO In case of emergencies
+            if t >= 200:
+                done = True
             
+            #Update state
             state = newState
 
             break #TODO figure out break condition
