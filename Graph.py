@@ -2,6 +2,9 @@ from NodeAndEdge import Node,Edge
 import xml.etree.ElementTree as ET
 import os
 
+#todo do I doulbe penalize if the same constraint is broken twice
+#yes. for the pick at most max out of k games constraints. when max hits 1 we convert to non-complex constraints. If max hits 0 we should simplify the single arcs for each one
+
 def splitmeetings(meetings):
     return [[int(team) for team in m.split(',')] for m in meetings.split(';')[:-1]]
 
@@ -13,9 +16,10 @@ class Graph:
         self.slots=slots
         self.hardconstraintcost=hardconstraintcost
         self.costconstant=0 #Some constraints are easier to model by giving the graph a cost and then subtracting the cost if nodes are selected.
-        self.complexconstraints={} #complexid: list of edges related to this complex constraint
-        self.complexidcounter=0
+        self.constraints={} #constraintid: list of edges related to this complex constraint TODO if edges are stored here, delete them when edge is deleted?
+        self.constraintidcounter=0
         self.solution=set() #set of ids of the selected nodes
+        self.forcedselections=set()
         idnum = 0
         for s in self.slots:
             for hometeam in self.teams:
@@ -29,40 +33,40 @@ class Graph:
         idnum = self.nodemapping.get((hometeam, awayteam, slot))
         if idnum is None:
             return #node has already been deleted
-        for complexconstraint in self.nodedict[idnum].edges_hard_complex:
-            #TODO
-            pass
-        for complexconstraint in self.nodedict[idnum].edges_soft_complex:
-            #TODO
-            pass
-        self.nodedict[idnum].delete()
-        del self.nodedict[idnum]
-        del self.nodemapping[(hometeam, awayteam, slot)]
+        self.deletenodebyid(idnum)
 
     def deletenodebyid(self,idnum):
-        #ToDo link all the delete node methods together
         node = self.nodedict.get(idnum)
         if node is None:
             return #node has already been deleted
+        self.deletenodebyobject(node,idnum)
+
+    def deletenodebyobject(self,node,idnum):
+        del self.nodedict[idnum]
         del self.nodemapping[(node.hometeam, node.awayteam, node.slot)]
         node.delete()
-        del self.nodedict[idnum]
+        # TODO some complex constraints could be simplified because of node deletion. Won't effect correctness of reward or feasibility so leaving it for now.
         #ToDo select any nodes this forces. Example only one game left for a team in a slot. Or only one slot left for a matchup
             #alternatively the RL model should pick this up. If RL is sequential then maybe this is needed
 
-    def deletenodebyobject(self,node):
-        del self.nodedict[node.idnum]
-        del self.nodemapping[(node.hometeam, node.awayteam, node.slot)]
-        node.delete()
-
     def selectnode(self,nodeid):
         reward = self.computereward(nodeid)
-        affectedcomplexconstraintids,nodestodelete = self.nodedict[nodeid].select()
-        self.solution.add(nodeid)
-        for nodeid in nodestodelete:
+        node = self.nodedict[nodeid]
+        node.selected = True
+        for nodeid in set(node.edges_hard.keys()):  # delete all nodes connected to this one by a hard constraint
             self.deletenodebyid(nodeid)
-        for C_id in affectedcomplexconstraintids:
-            self.updatecomplexconstraint(C_id)
+
+        for edge in node.edges_hard_complex: #update complex hard constraints
+            for C_id in node.edges_hard_complex[edge].constraintids:
+                self.updateconstraints(C_id, nodeid)
+        for edge in node.edges_soft_complex: #update complex soft constraints
+            for C_id in node.edges_soft_complex[edge].constraintids:
+                self.updateconstraints(C_id, nodeid)
+        for edge in node.edges_soft: #update non-complex soft constraints
+            for C_id in node.edges_soft[edge].constraintids:
+                self.updateconstraints(C_id, nodeid)
+
+        self.solution.add(nodeid)
         return reward
 
     def computereward(self,nodeid):
@@ -78,44 +82,70 @@ class Graph:
     def getActions(self):
         return self.nodedict.keys() - self.solution
 
-    def updatecomplexconstraint(self,C_id):
+    def updateconstraints(self,C_id, nodeid):
+        #node has been selected
+        #NODE Constraint
+        #decrement max of constraint by 1
+            #remove edges going into selected node
+                #update cost of other edges?
+        #if max=1 convert to a non complex constraint
+            #delete all the complex edges
+            #for every node part of the constraint that is not part of the solution, link it to all other node part of the constraint that is also not part of the solution
+        #if max=0 remove all arcs except for those from nodeid to unselected nodes
+
+        #EDGE Constraint
+        #if break constraint then we're picking at most max out of k edges (no nodes)
+        # decrement max of constraint by the amount of active edges create by selecting nodeid (could be 0-4)
+            #update cost of other edges?
+            #also update dict of {nodeid:num connected selected nodes}
+            #if this is already > max then increment cost of node (so the decrement later makes no net change)
+        #if max=0 all edges connected to at least one node not in the solution become non-complex edges. Edges between 2 selected nodes are removed
+        #if max<4 and there exists an unselected node that has arcs to (max+1) active nodes then add cost to that node by weight*(max-numarcs).
+            # Undo this by removing weight from cost for every future decrement of max. If max=0 undo remaining amount
         pass
         #TODO
 
 
-    def addEdge(self, node1,node2,weight,hard=False,Complex=False, complexid=None):
+    def addEdge(self, node1,node2,weight,hard=False,Complex=False, constraintid=None):
         #if edge already exists then increment cost. If complex then add complex id
         #else create new edge
+
+        if node1.edges_hard.get(node2.id) is not None:
+            # if a hard constraint already exists between these nodes then don't bother adding anything. Breaking this constraint already makes the problem infeasible
+            #this will reduce size of graph and hopefully make edges more interpretable for struct2vec/RL algo
+            return
         if hard:
             if Complex:
                 edge = node1.edges_hard_complex.get(node2.id)
                 if edge is not None:
                     edge.addweight(weight)
-                    edge.complexids.append(complexid)
                 else:
-                    edge= Edge(node1, node2, weight, hard, Complex, complexid)
-                self.complexconstraints[complexid].append(edge)
+                    edge= Edge(node1, node2, weight, hard, Complex, constraintid)
             else:
-                edge = node1.edges_hard.get(node2.id)
-                if edge is not None:
-                    edge.addweight(weight)
-                else:
-                    Edge(node1, node2, weight, hard, Complex, complexid)
+                #edge = node1.edges_hard.get(node2.id)
+                #if edge is not None:
+                    #edge.addweight(weight)
+                    #pass
+                #else:
+                    #Edge(node1, node2, weight, hard, Complex, constraintid)
+                edge=Edge(node1, node2, weight, hard, Complex, constraintid)
         else:
             if Complex:
                 edge=node1.edges_soft_complex.get(node2.id)
                 if edge is not None:
                     edge.addweight(weight)
-                    edge.complexids.append(complexid)
                 else:
-                    Edge(node1, node2, weight, hard, Complex, complexid)
-                self.complexconstraints[complexid].append(edge)
+                    edge=Edge(node1, node2, weight, hard, Complex, constraintid)
             else:
                 edge = node1.edges_soft.get(node2.id)
                 if edge is not None:
                     edge.addweight(weight)
                 else:
-                    Edge(node1, node2, weight, hard, Complex, complexid)
+                    edge=Edge(node1, node2, weight, hard, Complex, constraintid)
+
+        if constraintid is not None:
+            self.constraints[constraintid].append(edge)
+            edge.constraintids.add(constraintid)
 
     def addonegameperweekconstraints(self):
         for slot in self.slots:
@@ -239,21 +269,20 @@ class Graph:
                                 games.append(self.nodedict[nodeid])
                 slotgames.append(games)
             #determine if complex or not
+            constraintid = self.constraintidcounter
+            self.constraints[constraintid] = []
+            self.constraintidcounter += 1
             if Max==1:
                 Complex=False
-                complexid=None
             else: #if max>1 then it is a complex constraint
                 Complex=True
-                complexid=self.complexidcounter
-                self.complexconstraints[complexid]=[]
-                self.complexidcounter+=1
                 penalty = penalty/Max #TODO tune how penalty is split between complex arcs. Incorporate len(slots)??
             #add all the edges
             for i in range(len(slots)-1):
                     for j in range(i+1,len(slots)):
                         for node_i in slotgames[i]:
                             for node_j in slotgames[j]:
-                                self.addEdge(node_i, node_j, weight=penalty, hard=hard, Complex=Complex,complexid=complexid)
+                                self.addEdge(node_i, node_j, weight=penalty, hard=hard, Complex=Complex,constraintid=constraintid)
 
     def addCA2(self, C):
         penalty=int(C.get('penalty'))
@@ -261,6 +290,8 @@ class Graph:
         opponents = [int(o) for o in C.get('teams2').split(';')]
         mode = C.get('mode1')
         hard= C.get('type')=='HARD'
+        if hard:
+            penalty=self.hardconstraintcost
         slots= [int(s) for s in C.get('slots').split(';')]
         Max = int(C.get('max'))
         Min = int(C.get('min'))
@@ -308,48 +339,165 @@ class Graph:
                         if nodeid is not None:
                             games.append(self.nodedict[nodeid])
                 slotgames.append(games)
+
+            constraintid = self.constraintidcounter
+            self.constraints[constraintid]=[]
+            self.constraintidcounter += 1
             # determine if complex or not
             if Max == 1:
                 Complex = False
-                complexid = None
             else:  # if max>1 then it is a complex constraint
                 Complex = True
-                complexid = self.complexidcounter
-                self.complexconstraints[complexid]=[]
-                self.complexidcounter += 1
                 penalty = penalty / Max  # TODO tune how penalty is split between complex arcs. Incorporate len(slots)??
             # add all the edges
             for i in range(len(slots) - 1):
                 for j in range(i + 1, len(slots)):
                     for node_i in slotgames[i]:
                         for node_j in slotgames[j]:
-                            self.addEdge(node_i, node_j, weight=penalty, hard=hard, Complex=Complex, complexid=complexid)
+                            self.addEdge(node_i, node_j, weight=penalty, hard=hard, Complex=Complex, constraintid=constraintid)
 
 
     def addCA3(self, C):
-        # TODO
+        # all constraints in our data are either 3,2,0 or 4,2,0
         Max = int(C.get('max'))
         Min = int(C.get('min'))
         intp = int(C.get('intp'))
+        mode = C.get('mode1')
+        penalty = int(C.get('penalty'))
         teams1 = [int(o) for o in C.get('teams1').split(';')]
         teams2 = [int(o) for o in C.get('teams2').split(';')]
 
-        #all constraints in our data are either 3,2,0 or 4,2,0
+        hard = C.get('type') == 'HARD'
+        if hard:
+            penalty=self.hardconstraintcost
+        #In our data: max=2, min=0, intp=3 or 4
+        #if intp=4, then teams1 is a singleton and teams2 is a subset. could be H, A or HA
 
-        #for 4,2,0. add constant cost to graph. add c
+        #separate constraint for each team and each window of length intp
+        #create all arcs.
+        # as arcs become active then decrement Max. If Max=1 then convert all edges into non-complex constraints
+        Complex = True
+
+        #all constraints in our dataset our complex because Max>1
+        penalty = penalty / Max
+        for team in teams1:
+            for slotend in range(intp, len(self.slots)+1):
+                #new constraint for every team and every window of slots of length intp
+                constraintid = self.constraintidcounter
+                self.constraints[constraintid] = []
+                self.constraintidcounter += 1
+                slotgames=[]
+                for slot in range(slotend-intp,slotend):
+                    games=[]
+                    if 'H' in mode:
+                        for awayteam in teams2:
+                            nodeid = self.nodemapping.get((team, awayteam, slot))
+                            if nodeid is not None:
+                                games.append(self.nodedict[nodeid])
+                    if 'A' in mode:
+                        for hometeam in teams2:
+                            nodeid = self.nodemapping.get((hometeam, team, slot))
+                            if nodeid is not None:
+                                games.append(self.nodedict[nodeid])
+                    slotgames.append(games)
+                # add all the edges
+                for i in range(len(slotgames) - 1):
+                    for j in range(i + 1, len(slotgames)):
+                        for node_i in slotgames[i]:
+                            for node_j in slotgames[j]:
+                                self.addEdge(node_i, node_j, weight=penalty, hard=hard, Complex=Complex, constraintid=constraintid)
 
 
     def addCA4(self, C):
-        # TODO
+        #in our dataset Max>0, Min=0
+
         #like CA2 but teams1 is treated as one single entity
         #GLOBAl is the same
         #Every is repeated constraint in each slot in slots
-        pass
+        penalty = int(C.get('penalty'))
+        teams = [int(t) for t in C.get('teams1').split(';')]
+        opponents = [int(o) for o in C.get('teams2').split(';')]
+        mode = C.get('mode1')
+        mode2 = C.get('mode2')
+        hard = C.get('type') == 'HARD'
+        if hard:
+            penalty=self.hardconstraintcost
+        slots = [int(s) for s in C.get('slots').split(';')]
+        Max = int(C.get('max'))
+        if mode2=='GLOBAL':
+            # Get all relevant nodes first
+            games = []  # list of lists. Inner list has all the relevant games of a team in a given slot
+            for slot in slots:
+                if 'H' in mode:
+                    # add cost to all home games between team and opponent
+                    for hometeam in teams:
+                        for awayteam in opponents:
+                            nodeid = self.nodemapping.get((hometeam, awayteam, slot))
+                            if nodeid is not None:
+                                games.append(self.nodedict[nodeid])
+                if 'A' in mode:
+                    # add cost to all away games between team and opponent
+                    for awayteam in teams:
+                        for hometeam in opponents:
+                            nodeid = self.nodemapping.get((hometeam, awayteam, slot))
+                            if nodeid is not None:
+                                games.append(self.nodedict[nodeid])
+            constraintid = self.constraintidcounter
+            self.constraints[constraintid] = []
+            self.constraintidcounter += 1
+            # determine if complex or not
+            if Max == 1:
+                Complex = False
+            else:  # if max>1 then it is a complex constraint
+                Complex = True
+                penalty = penalty / Max  # TODO tune how penalty is split between complex arcs. Incorporate len(slots)??
+            # add all the edges
+            for i in range(len(games) - 1):
+                for j in range(i+1, len(games)):
+                    node_i = games[i]
+                    node_j = games[j]
+                    self.addEdge(node_i, node_j, weight=penalty, hard=hard, Complex=Complex, constraintid=constraintid)
+        else:#mode2=='EVERY
+            # separate constraint for each slot
+            if Max!=1: #will be a complex constraint
+                penalty = penalty / Max  # TODO tune how penalty is split between complex arcs.
+            for slot in slots:
+                constraintid = self.constraintidcounter
+                self.constraints[constraintid] = []
+                self.constraintidcounter += 1
+                # determine if complex or not
+                if Max == 1:
+                    Complex = False
+                else:  # if max>1 then it is a complex constraint
+                    Complex = True
+                games = []
+                if 'H' in mode:
+                    # add cost to all home games between team and opponent
+                    for hometeam in teams:
+                        for awayteam in opponents:
+                            nodeid = self.nodemapping.get((hometeam, awayteam, slot))
+                            if nodeid is not None:
+                                games.append(self.nodedict[nodeid])
+                if 'A' in mode:
+                    # add cost to all away games between team and opponent
+                    for awayteam in teams:
+                        for hometeam in opponents:
+                            nodeid = self.nodemapping.get((hometeam, awayteam, slot))
+                            if nodeid is not None:
+                                games.append(self.nodedict[nodeid])
+                # add all the edges
+                for i in range(len(games) - 1):
+                    for j in range(i+1, len(games)):
+                        node_i = games[i]
+                        node_j = games[j]
+                        self.addEdge(node_i, node_j, weight=penalty, hard=hard, Complex=Complex, constraintid=constraintid)
 
     def addGA1(self, C):
         penalty=int(C.get('penalty'))
         meetings = splitmeetings(C.get('meetings'))
         hard= C.get('type')=='HARD'
+        if hard:
+            penalty=self.hardconstraintcost
         slots= [int(s) for s in C.get('slots').split(';')]
         Max = int(C.get('max'))
         Min = int(C.get('min'))
@@ -388,7 +536,7 @@ class Graph:
                     for m in meetings:
                         #add game to solution
                         nodeid=self.nodemapping[(m[0],m[1],s)]
-                        self.selectnode(nodeid)
+                        self.forcedselections.add(nodeid)
                 else:
                     s = slots[0]
                     for m in meetings:
@@ -397,10 +545,9 @@ class Graph:
                         self.costconstant += penalty
                         if nodeid is not None:
                             self.nodedict[nodeid].addcost(-penalty)
-
             else:
                 #if a team is apart of every matchup then that team cannot play a different matchup in slots
-                #remove nodes if constraint is hard. If soft the cost is already taken care of ny first if esle statement
+                #remove nodes if constraint is hard. If soft the cost is already taken care of by first if else statement
                 if hard:
                     teams=set(meetings[0])
                     for m in meetings[1:]:
@@ -418,51 +565,134 @@ class Graph:
         elif Min<Max:
             #if (Max < len(meetings)) and (Min>0):
                 #this never occurs in our data
-            if (Min>0):
-                #todo
-                pass
+            if (Min>0): #max= len(meetings)
+                # if not in this block then min=0, max < len(meetings)
                 #we need to select at least min out of max games
-                #encourage selection of meetings
+                #equivalent to not selecting more than (Max-Min) out of meetings in *other* slots
+                Max=Max-Min
+                slots = [s for s in self.slots if s not in slots]
+                #now the constraint is written as if it was a min=0, max < len(meetings) GA1 constraint
 
-                #update: As meetings get deleted, this constraint could turn into a forced game
-                #as nodes get selected, this constraint could get deleted
-
+            # we cannot select more than max out of len(meetings) games in slots
+            constraintid = self.constraintidcounter
+            self.constraints[constraintid] = []
+            self.constraintidcounter += 1
+            if Max==1:
+                Complex=False
             else:
-                #todo
-                pass
-                #we cannot select more than max out of len(meetings) games
-                #discourage selection of meetings
+                Complex=True
+                penalty = penalty / Max  # TODO tune how penalty is split between complex arcs
 
-                #update: As meetings get deleted, this constraint get could deleted
-                #as meetings get selected, this could turn into a forbidden game
+            meetinggames=[]
+            for meeting in meetings:
+                games=[]
+                for slot in slots:
+                    nodeid = self.nodemapping.get((meeting[0], meeting[1], slot))
+                    if nodeid is not None:
+                        games.append(self.nodedict[nodeid])
+                meetinggames.append(games)
 
+            for i in range(len(meetinggames) - 1):
+                for j in range(i + 1, len(meetinggames)):
+                    for node_i in meetinggames[i]:
+                        for node_j in meetinggames[j]:
+                            self.addEdge(node_i, node_j, weight=penalty, hard=hard, Complex=Complex,
+                                         constraintid=constraintid)
         #elif (Min==Max) and Max<len(meetings):
             #this never occurs in our data
 
 
 
     def addBR1(self, C):
-        # TODO
         intp = int(C.get('intp'))
         slots = [int(s) for s in C.get('slots').split(';')]
-        #intp is 0,1, or 2
-        if intp==0:
-            #forbid breaks
-            pass
-        else:
-            #complex constraint for each break
-            #once a break is selected then forbid other breaks
-            pass
+        teams = [int(t) for t in C.get('teams').split(';')]
+        mode = C.get('mode1')
+        penalty=int(C.get('penalty'))
+        hard= C.get('type')=='HARD'
+        if hard:
+            penalty=self.hardconstraintcost
+        #intp is 0,1, or 2 in our data
+        for team in teams:
+            if intp>0:
+                Complex=True
+                constraintid=self.constraintidcounter
+                self.constraintidcounter+=1
+                self.constraints[constraintid]=[]
+                penalty = penalty/(intp+1)#todo update complex penalty logic
+                #intp. on selection of constraint decrement intp. if intp=0 then create non-complex constraint
+            else:
+                Complex=False
+                constraintid=None
+            for opponent1 in self.teams:
+                if opponent1!=team:
+                    for opponent2 in self.teams:
+                        if (opponent2!=opponent1) and (opponent2!=team):
+                            for slot in slots:
+                                if 'H' in mode:
+                                    nodeid1 = self.nodemapping.get((team, opponent1, slot))
+                                    nodeid2 = self.nodemapping.get((team, opponent2, slot-1))
+                                    if (nodeid1 is not None) and (nodeid2 is not None):
+                                        self.addEdge(self.nodedict[nodeid1],self.nodedict[nodeid2],penalty,hard,Complex,constraintid)
+                                    nodeid1 = self.nodemapping.get((team, opponent2, slot))
+                                    nodeid2 = self.nodemapping.get((team, opponent1, slot-1))
+                                    if (nodeid1 is not None) and (nodeid2 is not None):
+                                        self.addEdge(self.nodedict[nodeid1],self.nodedict[nodeid2],penalty,hard,Complex,constraintid)
+                                if 'A' in mode:
+                                    nodeid1 = self.nodemapping.get((opponent1, team, slot))
+                                    nodeid2 = self.nodemapping.get((opponent2, team, slot - 1))
+                                    if (nodeid1 is not None) and (nodeid2 is not None):
+                                        self.addEdge(self.nodedict[nodeid1], self.nodedict[nodeid2], penalty, hard,Complex,constraintid)
+                                    nodeid1 = self.nodemapping.get((opponent2, team, slot))
+                                    nodeid2 = self.nodemapping.get((opponent1, team, slot - 1))
+                                    if (nodeid1 is not None) and (nodeid2 is not None):
+                                        self.addEdge(self.nodedict[nodeid1], self.nodedict[nodeid2], penalty, hard,Complex,constraintid)
 
 
     def addBR2(self, C):
-        # TODO
         teams = [int(t) for t in C.get('teams').split(';')]
         slots= [int(s) for s in C.get('slots').split(';')]
-        if not ((len(slots)==len(self.slots)) &(len(teams)==len(self.teams))):
-            print(len(slots),len(self.slots),len(teams),len(self.teams))
-        #this constraint only exists across the whole season
-        pass
+        intp = int(C.get('intp'))
+        penalty=int(C.get('penalty'))
+        hard= C.get('type')=='HARD'
+        if hard:
+            penalty=self.hardconstraintcost
+        #this constraint only exists in our data across the whole season
+        if intp > 0:
+            Complex = True
+            constraintid = self.constraintidcounter
+            self.constraintidcounter += 1
+            self.constraints[constraintid] = []
+            penalty = penalty / (intp + 1)  # todo update complex penalty logic
+            # todo save data on complex constraint for easier updates later
+            # intp. on selection of constraint decrement intp. if intp=0 then create non-complex constraint
+        else:
+            Complex = False
+            constraintid = None
+        for team in teams:
+            for opponent1 in teams:
+                if opponent1!=team:
+                    for opponent2 in teams:
+                        if (opponent2!=opponent1) and (opponent2!=team):
+                            for slot in self.slots[1:]:
+                                #home breaks
+                                nodeid1 = self.nodemapping.get((team, opponent1, slot))
+                                nodeid2 = self.nodemapping.get((team, opponent2, slot-1))
+                                if (nodeid1 is not None) and (nodeid2 is not None):
+                                    self.addEdge(self.nodedict[nodeid1],self.nodedict[nodeid2],penalty,hard,Complex,constraintid)
+                                nodeid1 = self.nodemapping.get((team, opponent2, slot))
+                                nodeid2 = self.nodemapping.get((team, opponent1, slot-1))
+                                if (nodeid1 is not None) and (nodeid2 is not None):
+                                    self.addEdge(self.nodedict[nodeid1],self.nodedict[nodeid2],penalty,hard,Complex,constraintid)
+                                #away breaks
+                                nodeid1 = self.nodemapping.get((opponent1, team, slot))
+                                nodeid2 = self.nodemapping.get((opponent2, team, slot - 1))
+                                if (nodeid1 is not None) and (nodeid2 is not None):
+                                    self.addEdge(self.nodedict[nodeid1], self.nodedict[nodeid2], penalty, hard,Complex,constraintid)
+                                nodeid1 = self.nodemapping.get((opponent2, team, slot))
+                                nodeid2 = self.nodemapping.get((opponent1, team, slot - 1))
+                                if (nodeid1 is not None) and (nodeid2 is not None):
+                                    self.addEdge(self.nodedict[nodeid1], self.nodedict[nodeid2], penalty, hard,Complex,constraintid)
 
 
     def addFA2(self, C):
@@ -470,6 +700,8 @@ class Graph:
         #always a soft constraint for every team for every slot with intp=2
         intp = int(C.get('intp'))
 
+        #could limit homebreaks and hope that helps with FA2.
+        #always soft so could just ignore. Also only exists in about half the instances
         pass
 
 
@@ -496,6 +728,7 @@ class Graph:
                         nodeid2 = self.nodemapping.get((team1, team2, s2))
                         if (nodeid1 is not None) and (nodeid2 is not None):
                             self.addEdge(self.nodedict[nodeid1], self.nodedict[nodeid2], penalty, hard)
+
 
 
 def creategraph(path, hardconstraintcost=100):
@@ -549,11 +782,13 @@ def creategraph(path, hardconstraintcost=100):
     #add separation constraints
     for SE1 in separationconstraints:
         G.addSE1(SE1.attrib)
+    for nodeid in G.forcedselections:
+        G.selectnode(nodeid)
     return G
 
 
-
 if __name__=='__main__':
-    graphs=[creategraph('Instances/'+file) for file in os.listdir('Instances/')]
-    for g in graphs:
+    for file in os.listdir('Instances/'):
+        #checkGA1('Instances/'+file)
+        g= creategraph('Instances/'+file)
         print(len(g.teams),len(g.nodedict), len(g.nodedict)/(2*len(g.teams)*(len(g.teams)-1)**2)) #max num of nodes is 2*n*(n-1)^2

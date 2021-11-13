@@ -26,21 +26,9 @@ class Node:
         self.cost+=cost
 
 
-    def select(self):
-        self.selected=True
-        nodestodelete=[]
-        for nodeid in self.edges_hard:#delete all nodes connected to this one by a hard constraint
-            nodestodelete.append(nodeid)
-        affectedcomplexconstraintids=[]
-        for edge in self.edges_hard_complex: #update complex hard constraints
-            affectedcomplexconstraintids.extend(self.edges_hard_complex[edge].complexids)
-        for edge in self.edges_soft_complex: #update complex soft constraints
-            affectedcomplexconstraintids.extend(self.edges_soft_complex[edge].complexids)
-        #soft constraints don't change on selection
-        return affectedcomplexconstraintids, nodestodelete
 
 class Edge:
-    def __init__(self,node1,node2,weight,hard=False,Complex=False, complexid=None):
+    def __init__(self,node1,node2,weight,hard=False,Complex=False, constraintid=None):
         #node1.idnum < node2.idnum
         if node1==node2:
             print('ERROR: self directed edge')
@@ -49,7 +37,10 @@ class Edge:
         self.weight=weight
         self.hard=hard
         self.complex = Complex
-        self.complexids=[complexid]
+        #only constraints that require updating throughout the solving process require an id
+        self.constraintids=set()
+        if constraintid is not None:
+            self.constraintids.add(constraintid)
         if self.hard:
             if self.complex:
                 self.node1.edges_hard_complex[self.node2.id]=self
