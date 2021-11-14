@@ -59,6 +59,12 @@ class Edge:
     def addweight(self,weight):
         self.weight+=weight
 
+    def deleteconstraint(self, C_id, weight):
+        self.constraintids.discard(C_id)
+        if len(self.constraintids) == 0:
+            self.delete()
+        else:
+            self.addweight(-weight)
 
     def delete(self):
         if self.hard:

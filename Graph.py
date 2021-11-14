@@ -2,9 +2,6 @@ from NodeAndEdge import Node,Edge
 import xml.etree.ElementTree as ET
 import os
 
-#todo do I doulbe penalize if the same constraint is broken twice
-#yes. for the pick at most max out of k games constraints. when max hits 1 we convert to non-complex constraints. If max hits 0 we should simplify the single arcs for each one
-
 def splitmeetings(meetings):
     return [[int(team) for team in m.split(',')] for m in meetings.split(';')[:-1]]
 
@@ -16,7 +13,13 @@ class Graph:
         self.slots=slots
         self.hardconstraintcost=hardconstraintcost
         self.costconstant=0 #Some constraints are easier to model by giving the graph a cost and then subtracting the cost if nodes are selected.
-        self.constraints={} #constraintid: list of edges related to this complex constraint TODO if edges are stored here, delete them when edge is deleted?
+        self.constraints={} #constraintid: [constrainttype, Max, penalty,edges,numconnectedselectednodes,addedweight]
+                                    #constrainttype in ('node', 'edge') denotes if the constraint is a pick Max k out of n nodes or edges type of constraint
+                                    #Max is the max number of nodes or edges that could be added before the constraint is violated
+                                    #penalty is the cost for violating the constraint
+                                    #edges is a list of edges related to this constraint
+                                    #numconnectedselectednodes is a dict {nodeid: number of selected nodes connected to nodeid by an edge that's apart of this constraint}This only exists for constrainttype='edge'.
+                                    #addedweight is a dict  (nodeid: addedweight to this node due to this constraint}
         self.constraintidcounter=0
         self.solution=set() #set of ids of the selected nodes
         self.forcedselections=set()
@@ -46,28 +49,36 @@ class Graph:
         del self.nodemapping[(node.hometeam, node.awayteam, node.slot)]
         node.delete()
         # TODO some complex constraints could be simplified because of node deletion. Won't effect correctness of reward or feasibility so leaving it for now.
-        #ToDo select any nodes this forces. Example only one game left for a team in a slot. Or only one slot left for a matchup
-            #alternatively the RL model should pick this up. If RL is sequential then maybe this is needed
+        #ToDo select any nodes this forces. Example only one game left for a team in a slot. Or only one slot left for a matchup. To do this have to store sets for each of these and if set is singleton then it is forced
+            #alternatively the RL model should pick this up. If RL is sequential then maybe this could be helpful
 
     def selectnode(self,nodeid):
         reward = self.computereward(nodeid)
         node = self.nodedict[nodeid]
         node.selected = True
-        for nodeid in set(node.edges_hard.keys()):  # delete all nodes connected to this one by a hard constraint
-            self.deletenodebyid(nodeid)
 
-        for edge in node.edges_hard_complex: #update complex hard constraints
-            for C_id in node.edges_hard_complex[edge].constraintids:
-                self.updateconstraints(C_id, nodeid)
-        for edge in node.edges_soft_complex: #update complex soft constraints
-            for C_id in node.edges_soft_complex[edge].constraintids:
-                self.updateconstraints(C_id, nodeid)
-        for edge in node.edges_soft: #update non-complex soft constraints
-            for C_id in node.edges_soft[edge].constraintids:
-                self.updateconstraints(C_id, nodeid)
+        constraintids=set()
+        for edge in node.edges_soft.keys(): #update non-complex soft constraints
+            constraintids |= node.edges_soft[edge].constraintids
+        for C_id in constraintids:
+            self.updateconstraints(C_id, nodeid)
 
+        constraintids = set()
+        for edge in node.edges_hard_complex.keys(): #update complex hard constraints
+            constraintids |= node.edges_hard_complex[edge].constraintids
+        for C_id in constraintids:
+            self.updateconstraints(C_id, nodeid)
+
+        constraintids = set()
+        for edge in node.edges_soft_complex.keys(): #update complex soft constraints
+            constraintids |= node.edges_soft_complex[edge].constraintids
+        for C_id in constraintids:
+            self.updateconstraints(C_id, nodeid)
+
+        for deletenodeid in set(node.edges_hard.keys()):  # delete all nodes connected to this one by a hard constraint
+            self.deletenodebyid(deletenodeid)
         self.solution.add(nodeid)
-        return reward
+        return reward, len(self.solution)==(len(self.slots)*len(self.teams)/2)
 
     def computereward(self,nodeid):
         node = self.nodedict[nodeid]
@@ -83,33 +94,107 @@ class Graph:
         return self.nodedict.keys() - self.solution
 
     def updateconstraints(self,C_id, nodeid):
-        #node has been selected
+        #nodeid has been selected
+        constraint = self.constraints[C_id]
+
         #NODE Constraint
-        #decrement max of constraint by 1
-            #remove edges going into selected node
-                #update cost of other edges?
+        # decrement max of constraint by 1
+        #if max>1
+            #delete all edges going into selected node
+            #update cost of other edges
         #if max=1 convert to a non complex constraint
             #delete all the complex edges
-            #for every node part of the constraint that is not part of the solution, link it to all other node part of the constraint that is also not part of the solution
+            #for every node part of the constraint that is not part of the solution (all remaining nodes), link it to all other nodes part of the constraint
         #if max=0 remove all arcs except for those from nodeid to unselected nodes
+
+
+        #decrement max of constraint by 1
+        if constraint[0]=='node':
+            constraint[1]= constraint[1]-1
+            if constraint[1]==1:
+                newconstraintid=self.constraintidcounter
+                self.constraintidcounter+=1
+                self.constraints[newconstraintid] = ['node', 1, constraint[2], []]
+
+            for edge in constraint[3]:
+                if (edge.node1.id in self.nodedict) and (edge.node2.id in self.nodedict):#when nodes get deleted the list of edges for each constraint does not get updated.
+                    if (edge.node1.id==nodeid) or (edge.node2.id==nodeid):
+                        #selected node
+                        if constraint[1] >= 1:  # max>=1
+                            #delete constraint from this edge
+                            edge.deleteconstraint(C_id, constraint[2]/(constraint[1]+1))
+                        #else max=0 and these are the only constraints we want to keep
+                    else:
+                        if constraint[1]>1:#max>1
+                            # update cost of other edges
+                            edge.addweight(constraint[2] / (constraint[1]) - constraint[2] / (constraint[1] + 1))
+                        elif constraint[1]==1: #max=1
+                            edge.deleteconstraint(C_id, constraint[2] / (constraint[1] + 1))
+                            self.addEdge(edge.node1,edge.node2,constraint[2],edge.hard,Complex=False, constraintid=newconstraintid)
+                        else: #max=0
+                            #delete constraint from this edge
+                            edge.deleteconstraint(C_id, constraint[2] / (constraint[1] + 1))
+            if constraint[1] == 1:
+                del self.constraints[C_id]
+
 
         #EDGE Constraint
         #if break constraint then we're picking at most max out of k edges (no nodes)
+        #if max =0, no updates are needed
         # decrement max of constraint by the amount of active edges create by selecting nodeid (could be 0-4)
-            #update cost of other edges?
-            #also update dict of {nodeid:num connected selected nodes}
-            #if this is already > max then increment cost of node (so the decrement later makes no net change)
-        #if max=0 all edges connected to at least one node not in the solution become non-complex edges. Edges between 2 selected nodes are removed
-        #if max<4 and there exists an unselected node that has arcs to (max+1) active nodes then add cost to that node by weight*(max-numarcs).
-            # Undo this by removing weight from cost for every future decrement of max. If max=0 undo remaining amount
-        pass
-        #TODO
+        #for each edge
+            #if it was just made active then remove. If max<0, the cost incurred for making max<0 was embedded into the node earlier
+            #update cost of non-active edges
+            #if max<=0 all non-active edges become non-complex constraints. Remove any costs embedded into nodes that have yet to be selected
+            #if max>0:
+                #update dict of {nodeid:num connected selected nodes}
+                    #if this is  > max, then increment cost of node by weight*(numconnectedactivenodes-max)
+        # if the decrement=0 only this last if block is needed because others will have no effect
+        else:
+            if constraint[1]==0: #if max already equals 0, edge constraints don't need any updating
+                return
+            maxdecrement = constraint[4].get(nodeid,0) #decrement max of constraint by the amount of active edges create by selecting nodeid (could be 0-4)
+            constraint[1] = constraint[1] - maxdecrement
+            for edge in constraint[3]:
+                if (edge.node1.id in self.nodedict) and (edge.node2.id in self.nodedict):#when nodes get deleted the list of edges for each constraint does not get updated.
+                    if (edge.node1.id==nodeid):
+                        othernode = edge.node2
+                    elif (edge.node2.id==nodeid):
+                        othernode = edge.node1
+                    else:
+                        othernode=None
+                    if othernode is not None:
+                        # selected node is part of this edge
+                        if othernode.selected: #this is an active edge because both nodes are selected
+                            #remove
+                            edge.deleteconstraint(C_id, constraint[2] / (constraint[1] + maxdecrement + 1))
+                            continue
+                        else:
+                            if constraint[1]>0:
+                                constraint[4][othernode.id]= constraint[4].get(othernode.id,0)+1#update dict of {nodeid:num connected selected nodes}
+                                if constraint[4][othernode.id]>constraint[1]: #if this is  > max, then increment cost of node by weight
+                                    othernode.addcost(constraint[2])
+                                    constraint[5][othernode.id] =  constraint[5].get(othernode.id,0) + constraint[2]
+                    if maxdecrement==0:
+                        continue#max hasn't changed so below updates will all have no effect
+                    # if max<=0 all non-active edges become non-complex constraints. Remove any costs embedded into nodes that have yet to be selected
+                    if constraint[1]<=0:
+                        self.addEdge(edge.node1, edge.node2, constraint[2], edge.hard, Complex=False,
+                                     constraintid=None)
+                        edge.deleteconstraint(C_id, constraint[2] / (constraint[1] + maxdecrement+ 1))
+                        for othernodeid in constraint[5]:
+                            self.nodedict[othernodeid].addcost(-constraint[5][othernodeid])
+                    else:
+                        #update cost of complex edges
+                        edge.addweight(constraint[2] / (constraint[1]+1) - constraint[2] / (constraint[1] +maxdecrement + 1))
+
+            if constraint[1]<=0:#if max<=0. We transformed it to a non-complex constraint and it will need no further updates
+                del self.constraints[C_id]
 
 
     def addEdge(self, node1,node2,weight,hard=False,Complex=False, constraintid=None):
         #if edge already exists then increment cost. If complex then add complex id
         #else create new edge
-
         if node1.edges_hard.get(node2.id) is not None:
             # if a hard constraint already exists between these nodes then don't bother adding anything. Breaking this constraint already makes the problem infeasible
             #this will reduce size of graph and hopefully make edges more interpretable for struct2vec/RL algo
@@ -144,7 +229,7 @@ class Graph:
                     edge=Edge(node1, node2, weight, hard, Complex, constraintid)
 
         if constraintid is not None:
-            self.constraints[constraintid].append(edge)
+            self.constraints[constraintid][3].append(edge)
             edge.constraintids.add(constraintid)
 
     def addonegameperweekconstraints(self):
@@ -270,7 +355,7 @@ class Graph:
                 slotgames.append(games)
             #determine if complex or not
             constraintid = self.constraintidcounter
-            self.constraints[constraintid] = []
+            self.constraints[constraintid] = ['node',Max,penalty,[]]
             self.constraintidcounter += 1
             if Max==1:
                 Complex=False
@@ -341,7 +426,7 @@ class Graph:
                 slotgames.append(games)
 
             constraintid = self.constraintidcounter
-            self.constraints[constraintid]=[]
+            self.constraints[constraintid]=['node',Max,penalty,[]]
             self.constraintidcounter += 1
             # determine if complex or not
             if Max == 1:
@@ -379,12 +464,13 @@ class Graph:
         Complex = True
 
         #all constraints in our dataset our complex because Max>1
+        originalpenalty=penalty
         penalty = penalty / Max
         for team in teams1:
             for slotend in range(intp, len(self.slots)+1):
                 #new constraint for every team and every window of slots of length intp
                 constraintid = self.constraintidcounter
-                self.constraints[constraintid] = []
+                self.constraints[constraintid] =['node',Max,originalpenalty,[]]
                 self.constraintidcounter += 1
                 slotgames=[]
                 for slot in range(slotend-intp,slotend):
@@ -443,7 +529,7 @@ class Graph:
                             if nodeid is not None:
                                 games.append(self.nodedict[nodeid])
             constraintid = self.constraintidcounter
-            self.constraints[constraintid] = []
+            self.constraints[constraintid] =['node',Max,penalty,[]]
             self.constraintidcounter += 1
             # determine if complex or not
             if Max == 1:
@@ -459,11 +545,12 @@ class Graph:
                     self.addEdge(node_i, node_j, weight=penalty, hard=hard, Complex=Complex, constraintid=constraintid)
         else:#mode2=='EVERY
             # separate constraint for each slot
+            originalpenalty=penalty
             if Max!=1: #will be a complex constraint
                 penalty = penalty / Max  # TODO tune how penalty is split between complex arcs.
             for slot in slots:
                 constraintid = self.constraintidcounter
-                self.constraints[constraintid] = []
+                self.constraints[constraintid] = ['node',Max,originalpenalty,[]]
                 self.constraintidcounter += 1
                 # determine if complex or not
                 if Max == 1:
@@ -575,7 +662,7 @@ class Graph:
 
             # we cannot select more than max out of len(meetings) games in slots
             constraintid = self.constraintidcounter
-            self.constraints[constraintid] = []
+            self.constraints[constraintid] = ['node',Max,penalty,[]]
             self.constraintidcounter += 1
             if Max==1:
                 Complex=False
@@ -618,7 +705,7 @@ class Graph:
                 Complex=True
                 constraintid=self.constraintidcounter
                 self.constraintidcounter+=1
-                self.constraints[constraintid]=[]
+                self.constraints[constraintid]=['edge',intp,penalty,[],{},{}]
                 penalty = penalty/(intp+1)#todo update complex penalty logic
                 #intp. on selection of constraint decrement intp. if intp=0 then create non-complex constraint
             else:
@@ -662,10 +749,8 @@ class Graph:
             Complex = True
             constraintid = self.constraintidcounter
             self.constraintidcounter += 1
-            self.constraints[constraintid] = []
+            self.constraints[constraintid] = ['edge',intp,penalty,[],{},{}]
             penalty = penalty / (intp + 1)  # todo update complex penalty logic
-            # todo save data on complex constraint for easier updates later
-            # intp. on selection of constraint decrement intp. if intp=0 then create non-complex constraint
         else:
             Complex = False
             constraintid = None
