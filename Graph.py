@@ -1,6 +1,7 @@
 from NodeAndEdge import Node,Edge
 import xml.etree.ElementTree as ET
 import os
+import pickle
 
 def splitmeetings(meetings):
     return [[int(team) for team in m.split(',')] for m in meetings.split(';')[:-1]]
@@ -23,6 +24,7 @@ class Graph:
         self.constraintidcounter=0
         self.solution=set() #set of ids of the selected nodes
         self.forcedselections=set()
+        self.solutionsize = (len(self.slots)*len(self.teams)/2)
         idnum = 0
         for s in self.slots:
             for hometeam in self.teams:
@@ -78,7 +80,7 @@ class Graph:
         for deletenodeid in set(node.edges_hard.keys()):  # delete all nodes connected to this one by a hard constraint
             self.deletenodebyid(deletenodeid)
         self.solution.add(nodeid)
-        return reward, len(self.solution)==(len(self.slots)*len(self.teams)/2)
+        return reward, len(self.solution)==self.solutionsize
 
     def computereward(self,nodeid):
         node = self.nodedict[nodeid]
@@ -87,7 +89,7 @@ class Graph:
         for nodeid2 in (node.edges_soft.keys() & activenodes):
             cost+=node.edges_soft[nodeid2].weight
         for nodeid2 in (node.edges_hard.keys() & activenodes):
-            cost+=node.edges_soft[nodeid2].weight
+            cost+=node.edges_hard[nodeid2].weight
         return -cost
 
     def getActions(self):
@@ -110,18 +112,21 @@ class Graph:
 
         #decrement max of constraint by 1
         if constraint[0]=='node':
+            if constraint[1]==0:
+                return
             constraint[1]= constraint[1]-1
             if constraint[1]==1:
                 newconstraintid=self.constraintidcounter
                 self.constraintidcounter+=1
-                self.constraints[newconstraintid] = ['node', 1, constraint[2], []]
+                self.constraints[newconstraintid] = ['node', 1, constraint[2], set()]
 
-            for edge in constraint[3]:
+            for edge in set(constraint[3]):
                 if (edge.node1.id in self.nodedict) and (edge.node2.id in self.nodedict):#when nodes get deleted the list of edges for each constraint does not get updated.
                     if (edge.node1.id==nodeid) or (edge.node2.id==nodeid):
                         #selected node
                         if constraint[1] >= 1:  # max>=1
                             #delete constraint from this edge
+                            constraint[3].remove(edge)
                             edge.deleteconstraint(C_id, constraint[2]/(constraint[1]+1))
                         #else max=0 and these are the only constraints we want to keep
                     else:
@@ -129,13 +134,16 @@ class Graph:
                             # update cost of other edges
                             edge.addweight(constraint[2] / (constraint[1]) - constraint[2] / (constraint[1] + 1))
                         elif constraint[1]==1: #max=1
+                            constraint[3].remove(edge)
                             edge.deleteconstraint(C_id, constraint[2] / (constraint[1] + 1))
                             self.addEdge(edge.node1,edge.node2,constraint[2],edge.hard,Complex=False, constraintid=newconstraintid)
                         else: #max=0
                             #delete constraint from this edge
+                            constraint[3].remove(edge)
                             edge.deleteconstraint(C_id, constraint[2] / (constraint[1] + 1))
             if constraint[1] == 1:
                 del self.constraints[C_id]
+            return
 
 
         #EDGE Constraint
@@ -155,7 +163,7 @@ class Graph:
                 return
             maxdecrement = constraint[4].get(nodeid,0) #decrement max of constraint by the amount of active edges create by selecting nodeid (could be 0-4)
             constraint[1] = constraint[1] - maxdecrement
-            for edge in constraint[3]:
+            for edge in set(constraint[3]):
                 if (edge.node1.id in self.nodedict) and (edge.node2.id in self.nodedict):#when nodes get deleted the list of edges for each constraint does not get updated.
                     if (edge.node1.id==nodeid):
                         othernode = edge.node2
@@ -167,6 +175,7 @@ class Graph:
                         # selected node is part of this edge
                         if othernode.selected: #this is an active edge because both nodes are selected
                             #remove
+                            constraint[3].remove(edge)
                             edge.deleteconstraint(C_id, constraint[2] / (constraint[1] + maxdecrement + 1))
                             continue
                         else:
@@ -183,7 +192,8 @@ class Graph:
                                      constraintid=None)
                         edge.deleteconstraint(C_id, constraint[2] / (constraint[1] + maxdecrement+ 1))
                         for othernodeid in constraint[5]:
-                            self.nodedict[othernodeid].addcost(-constraint[5][othernodeid])
+                            if othernodeid in self.nodedict:
+                                self.nodedict[othernodeid].addcost(-constraint[5][othernodeid])
                     else:
                         #update cost of complex edges
                         edge.addweight(constraint[2] / (constraint[1]+1) - constraint[2] / (constraint[1] +maxdecrement + 1))
@@ -229,7 +239,7 @@ class Graph:
                     edge=Edge(node1, node2, weight, hard, Complex, constraintid)
 
         if constraintid is not None:
-            self.constraints[constraintid][3].append(edge)
+            self.constraints[constraintid][3].add(edge)
             edge.constraintids.add(constraintid)
 
     def addonegameperweekconstraints(self):
@@ -355,7 +365,7 @@ class Graph:
                 slotgames.append(games)
             #determine if complex or not
             constraintid = self.constraintidcounter
-            self.constraints[constraintid] = ['node',Max,penalty,[]]
+            self.constraints[constraintid] = ['node',Max,penalty,set()]
             self.constraintidcounter += 1
             if Max==1:
                 Complex=False
@@ -426,7 +436,7 @@ class Graph:
                 slotgames.append(games)
 
             constraintid = self.constraintidcounter
-            self.constraints[constraintid]=['node',Max,penalty,[]]
+            self.constraints[constraintid]=['node',Max,penalty,set()]
             self.constraintidcounter += 1
             # determine if complex or not
             if Max == 1:
@@ -470,7 +480,7 @@ class Graph:
             for slotend in range(intp, len(self.slots)+1):
                 #new constraint for every team and every window of slots of length intp
                 constraintid = self.constraintidcounter
-                self.constraints[constraintid] =['node',Max,originalpenalty,[]]
+                self.constraints[constraintid] =['node',Max,originalpenalty,set()]
                 self.constraintidcounter += 1
                 slotgames=[]
                 for slot in range(slotend-intp,slotend):
@@ -529,7 +539,7 @@ class Graph:
                             if nodeid is not None:
                                 games.append(self.nodedict[nodeid])
             constraintid = self.constraintidcounter
-            self.constraints[constraintid] =['node',Max,penalty,[]]
+            self.constraints[constraintid] =['node',Max,penalty,set()]
             self.constraintidcounter += 1
             # determine if complex or not
             if Max == 1:
@@ -550,7 +560,7 @@ class Graph:
                 penalty = penalty / Max  # TODO tune how penalty is split between complex arcs.
             for slot in slots:
                 constraintid = self.constraintidcounter
-                self.constraints[constraintid] = ['node',Max,originalpenalty,[]]
+                self.constraints[constraintid] = ['node',Max,originalpenalty,set()]
                 self.constraintidcounter += 1
                 # determine if complex or not
                 if Max == 1:
@@ -662,7 +672,7 @@ class Graph:
 
             # we cannot select more than max out of len(meetings) games in slots
             constraintid = self.constraintidcounter
-            self.constraints[constraintid] = ['node',Max,penalty,[]]
+            self.constraints[constraintid] = ['node',Max,penalty,set()]
             self.constraintidcounter += 1
             if Max==1:
                 Complex=False
@@ -705,7 +715,7 @@ class Graph:
                 Complex=True
                 constraintid=self.constraintidcounter
                 self.constraintidcounter+=1
-                self.constraints[constraintid]=['edge',intp,penalty,[],{},{}]
+                self.constraints[constraintid]=['edge',intp,penalty,set(),{},{}]
                 penalty = penalty/(intp+1)#todo update complex penalty logic
                 #intp. on selection of constraint decrement intp. if intp=0 then create non-complex constraint
             else:
@@ -749,7 +759,7 @@ class Graph:
             Complex = True
             constraintid = self.constraintidcounter
             self.constraintidcounter += 1
-            self.constraints[constraintid] = ['edge',intp,penalty,[],{},{}]
+            self.constraints[constraintid] = ['edge',intp,penalty,set(),{},{}]
             penalty = penalty / (intp + 1)  # todo update complex penalty logic
         else:
             Complex = False
@@ -873,7 +883,16 @@ def creategraph(path, hardconstraintcost=100):
 
 
 if __name__=='__main__':
+    #to avoid max recursion error when saving pickle
+    import sys
+    max_rec = 0x100000
+    sys.setrecursionlimit(max_rec)
+    file = 'ITC2021_Test1.xml'
+    g = creategraph('Instances/' + file)
+    pickle.dump(g, open('PreprocessedInstances/'+file.replace('xml','pkl'),'wb'))
+    '''
     for file in os.listdir('Instances/'):
-        #checkGA1('Instances/'+file)
         g= creategraph('Instances/'+file)
         print(len(g.teams),len(g.nodedict), len(g.nodedict)/(2*len(g.teams)*(len(g.teams)-1)**2)) #max num of nodes is 2*n*(n-1)^2
+    '''
+

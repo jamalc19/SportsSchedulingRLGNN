@@ -56,6 +56,9 @@ class Edge:
                 self.node1.edges_soft[self.node2.id]=self
                 self.node2.edges_soft[self.node1.id]=self
 
+    def __hash__(self):
+        return (self.node1.id, self.node2.id,self.hard,self.complex).__hash__()
+
     def addweight(self,weight):
         self.weight+=weight
 
@@ -81,5 +84,6 @@ class Edge:
             else:
                 del self.node1.edges_soft[self.node2.id]
                 del self.node2.edges_soft[self.node1.id]
+
 
     
