@@ -138,7 +138,6 @@ class Agent:
             action: 
             reward:
             done:
-            
         """
         batch = random.sample(self.memory, BATCH_SIZE)
         state, next_state, action, reward, done = map(torch.stack, zip(*batch))
@@ -147,14 +146,14 @@ class Agent:
 
     def learn(self, y, Q):
         """Backwards pass for model"""
-
         #Retrive batch from memory
-        state, next_state, action, reward, done = self.recall()
-        loss = self.loss_fn(y, Q)
-        self.optimizer.zero_grad()
-        loss.backward()
-        self.optimizer.step()
-        return loss.item()
+        # state, next_state, action, reward, done = self.recall()
+                
+        # loss = self.loss_fn(y, Q)
+        # self.optimizer.zero_grad()
+        # loss.backward()
+        # self.optimizer.step()
+        # return loss.item()
 
 
 #***********************************************************************
