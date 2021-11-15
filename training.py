@@ -6,6 +6,7 @@ import os
 
 import torch
 import torch.optim as optim
+import torch.nn as nn
 
 from collections import namedtuple, deque
 from Graph import Graph, creategraph
@@ -15,13 +16,18 @@ from s2v_scheduling import Model, structure2vec
 # INITIALIZE 
 #*********************************************************************
 
-#Training Params
+#Training params
 GAMMA = 0.999
 EPS = 0.333
-TARGET_UPDATE = 10
-EMBED_SIZE = 128
-BATCH_SIZE = 128
+TRAINING_DELAY = 1
 EPISODES = 100
+BATCH_SIZE = 128
+
+#Agent params
+EMBEDDING_SIZE = 10
+CACHE_SIZE = 1000
+
+
 #TODO Decaying epsilon, relay memory, remove constants from global
 #EPS_START = 0.9
 #EPS_END = 0.05
@@ -48,20 +54,23 @@ class Agent:
     Wrapper class holding the model to train, and a cache of previous steps
 
     Attributes
-        memory
-        model
-        use_cuda
+        memory: stores previous instances for model training
+        model: nn.module subclass for deep Q
+        use_cuda: Boolean for cuda availability
+        loss_fn: 
+        optimizer: 
     """
-
     def __init__(self) -> None:
         super().__init__()
-        self.memory = deque(maxlen=1000)#TODO decide on replay memory size
-        self.model = Model(EMBED_SIZE)
+        self.memory = deque(maxlen=CACHE_SIZE)
+        self.model = Model(EMBEDDING_SIZE)
 
         self.use_cuda = torch.cuda.is_available()
         if self.use_cuda:
-            self.net = self.model.to(device="cuda")
-    
+            self.net = self.model.to(device="cuda")   
+
+        self.optimizer = torch.nn.SGD(self.model.parameters(), lr=0.01, momentum=0.9)#TODO tune params
+        self.loss_fn = torch.nn.MSELoss()    
 
     def action(self, graph: Graph) -> int:
         """
@@ -74,24 +83,24 @@ class Agent:
             actionID: the nodeID of the selected node
             action: the embedding for the corresponding nodeID
         """
-        graphEmbeddings = structure2vec(self.model, graph)
+        graph_embeddings = structure2vec(self.model, graph)
         
-        qValueDict = {}
+        q_value_dict = {}
         for nodeID in graph.getActions():
-            qValueDict[nodeID] = self.model.estimateQ(graphEmbeddings, nodeID)
+            q_value_dict[nodeID] = self.model.estimateQ(graph_embeddings, nodeID)
 
         #eps-greedy action
         if random.random() <= EPS: #select random node to add
-            actionID = random.choice(list(qValueDict.keys()))
+            actionID = random.choice(list(q_value_dict.keys()))
         else: #select node with highest q
-            actionID = max(qValueDict, key=qValueDict.get)
+            actionID = max(q_value_dict, key=q_value_dict.get)
         
-        action = graphEmbeddings[actionID]
+        action = graph_embeddings[actionID]
 
         return actionID, action.toList() #int, list
 
 
-    def cache(self, state, nextState, action, reward, done):
+    def cache(self, state, next_state, action, reward, done):
         """
         Store the experience to self.memory (replay buffer)
 
@@ -99,24 +108,23 @@ class Agent:
         state (list),
         next_state (list),
         action (list),
-        reward () #TODO decide on datatype 
-        done(bool) #FIXME decide when done
+        reward ()
+        done(bool)
         """
-
         if self.use_cuda:
             state = torch.tensor(state).cuda()
-            nextState = torch.tensor(nextState).cuda()
+            next_state = torch.tensor(next_state).cuda()
             action = torch.tensor(action).cuda()
             reward = torch.tensor([reward]).cuda()
             done = torch.tensor([done]).cuda()
         else:
             state = torch.tensor(state)
-            nextState = torch.tensor(nextState)
+            next_state = torch.tensor(next_state)
             action = torch.tensor(action)
             reward = torch.tensor([reward])
             done = torch.tensor([done])
 
-        self.memory.append((state, nextState, action, reward, done,))
+        self.memory.append((state, next_state, action, reward, done,))
 
 
     def recall(self):
@@ -133,17 +141,20 @@ class Agent:
             
         """
         batch = random.sample(self.memory, BATCH_SIZE)
-        state, nextState, action, reward, done = map(torch.stack, zip(*batch))
+        state, next_state, action, reward, done = map(torch.stack, zip(*batch))
 
-        return state, nextState, action.squeeze(), reward.squeeze(), done.squeeze() #TODO remove squeeze?
+        return state, next_state, action.squeeze(), reward.squeeze(), done.squeeze()
 
-    def learn(self):
+    def learn(self, y, Q):
         """Backwards pass for model"""
 
-        state, nextState, action, reward, done = self.recall()
-        optimizer = optim.SGD(self.model.parameters(), lr=0.01, momentum=0.9) #TODO tune params
-
-        pass
+        #Retrive batch from memory
+        state, next_state, action, reward, done = self.recall()
+        loss = self.loss_fn(y, Q)
+        self.optimizer.zero_grad()
+        loss.backward()
+        self.optimizer.step()
+        return loss.item()
 
 
 #***********************************************************************
@@ -158,37 +169,39 @@ for i in instances:
     
     for e in range(EPISODES):
 
-        graph = copy.deepcopy(i) #TODO make more efficient
-        state = np.zeros(EMBED_SIZE)
+        graph = copy.deepcopy(i)
+        state = np.zeros(EMBEDDING_SIZE)
         done = False
         t = 1 #TODO set training delay
+        cumulative_reward = 0 #TODO verify that this is the correct implementation
 
         #Training
         while not done:
 
             #Determine which action to take
-            nodeToAdd, action = agent.action(graph)
+            node_to_add, action = agent.action(graph)
             
             #Take action, recieve reward
-            reward, done = graph.select(nodeToAdd)
+            reward, done = graph.select(node_to_add)
+            #TODO implement cumulative_reward += reward for 
 
             #Determine state t+1
-            nextState = np.add(state, action)
+            next_state = np.add(state, action)
 
             #Cache result
-            agent.cache(state, nextState, action, reward, done)
+            agent.cache(state, next_state, action, reward, done)
 
             #Train
-            if t >= TARGET_UPDATE:
+            if t >= TRAINING_DELAY:
                 agent.learn()
             else:
                 t += 1
 
-            #TODO In case of emergencies
+            #In case of emergencies, break loop
             if t >= 200:
                 done = True
             
             #Update state
-            state = nextState
+            state = next_state
 
             break
