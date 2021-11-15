@@ -69,8 +69,8 @@ class Agent:
         if self.use_cuda:
             self.net = self.model.to(device="cuda")   
 
-        self.optimizer = torch.nn.SGD(self.model.parameters(), lr=0.01, momentum=0.9)#TODO tune params
-        self.loss_fn = torch.nn.MSELoss()    
+        self.optimizer = nn.SGD(self.model.parameters(), lr=0.01, momentum=0.9)#TODO tune params
+        self.loss_fn = nn.MSELoss()    
 
     def action(self, graph: Graph) -> int:
         """
@@ -154,6 +154,7 @@ class Agent:
         # loss.backward()
         # self.optimizer.step()
         # return loss.item()
+        pass
 
 
 #***********************************************************************
