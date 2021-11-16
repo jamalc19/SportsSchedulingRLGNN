@@ -256,8 +256,7 @@ class Graph:
                             nodes.append(self.nodedict[nodeid])
                 for i in range(len(nodes)-1):
                     for j in range(i+1,len(nodes)):
-                        if nodes[i].edges_hard.get(nodes[j]) is not None:  #avoid adding the same constraint twice
-                            self.addEdge(nodes[i],nodes[j],weight=self.hardconstraintcost,hard=True)
+                        self.addEdge(nodes[i],nodes[j],weight=self.hardconstraintcost,hard=True)
 
     def adduniquematchupconstraints(self):
         for hometeam in self.teams:
@@ -826,7 +825,7 @@ class Graph:
 
 
 
-def creategraph(path, hardconstraintcost=100):
+def creategraph(path, hardconstraintcost=10000):
     tree = ET.parse(path)
     root=tree.getroot()
     phased= root.find('Structure').find('Format').find('gameMode')=='P'

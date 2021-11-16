@@ -25,12 +25,12 @@ EPS_START = 0.9
 EPS_END = 0.05
 EPS_DECAY = 200
 TRAINING_DELAY = 1
-EPISODES = 1000
+EPISODES = 100
 BATCH_SIZE = 128
 TARGET_UPDATE = 3
 
 #Agent params
-EMBEDDING_SIZE = 10
+EMBEDDING_SIZE = 64
 CACHE_SIZE = 1000
 
 
@@ -71,6 +71,7 @@ class Agent:
         self.memory = deque(maxlen=CACHE_SIZE)
         self.model = Model(EMBEDDING_SIZE)
         self.target_model = Model(EMBEDDING_SIZE)
+        self.target_model.load_state_dict(self.model.state_dict())
 
         self.use_cuda = torch.cuda.is_available()
         if self.use_cuda:
@@ -96,7 +97,7 @@ class Agent:
         return q_value_dict, graph_embeddings
 
 
-    def greedyepsilon(self, q_value_dict):
+    def greedyepsilon(self, q_value_dict,t):
         """
         Given a graph, update the current state (struc2vec) and pick the next action (Q-value)
         
@@ -119,6 +120,18 @@ class Agent:
 
         return actionID #int,
 
+    def greedy(self, q_value_dict):
+        """
+        Given a graph, update the current state (struc2vec) and pick the next action (Q-value)
+
+        Parameters
+            graph (Graph): a graph representation of the current state of the instance
+
+        Returns
+            actionID: the nodeID of the selected node
+            action: the embedding for the corresponding nodeID
+        """
+        return max(q_value_dict, key=q_value_dict.get)
 
     def cache(self, state, next_state, action, reward, done):
         """
@@ -170,67 +183,71 @@ class Agent:
         # state, next_state, action, reward, done = self.recall()
                 
         loss = self.loss_fn(Q, y)
+        print(loss)
         self.optimizer.zero_grad()
         loss.backward()
         self.optimizer.step()
+        return
         # return loss.item()
 
 
 #***********************************************************************
 #TRAINING
 #***********************************************************************
+if __name__=='__main__':
 
-#Create agent
-agent = Agent()
+    #Create agent
+    agent = Agent()
 
-np.random.seed(0)
-torch.manual_seed(0)
-#Training loop
-for e in range(EPISODES):
-    i = instances[np.random.randint(0,len(instances))] #sample the next instance from a uniform distribution
-    graph = pickle.load(open('PreprocessedInstances/'+i,'rb'))
-    state = np.zeros(EMBEDDING_SIZE)
-    done = False
-    t = 1 #TODO set training delay
-    cumulative_reward = -graph.costconstant #TODO verify that this is the correct implementation. It was but I defined some constraints by giving the graph an initial cost
+    np.random.seed(0)
+    torch.manual_seed(0)
+    #Training loop
+    for e in range(EPISODES):
+        i = instances[np.random.randint(0,len(instances))] #sample the next instance from a uniform distribution
+        graph = pickle.load(open('PreprocessedInstances/'+i,'rb'))
 
-    #Training
-    while not done:
+        state = np.zeros(EMBEDDING_SIZE)
+        done = False
+        t = 1 #TODO set training delay
+        cumulative_reward = -graph.costconstant #TODO verify that this is the correct implementation. It was but I defined some constraints by giving the graph an initial cost
 
-        #Determine which action to take
-        q_value_dict, graph_embeddings = agent.Q(graph)
-        node_to_add= agent.greedyepsilon(q_value_dict) #node_to_add is the selected nodeid, action is the nodes s2v embedding
-        action = graph_embeddings[node_to_add]
+        #Training
+        while not done:
+
+            #Determine which action to take
+            q_value_dict, graph_embeddings = agent.Q(graph)
+            node_to_add= agent.greedyepsilon(q_value_dict,t) #node_to_add is the selected nodeid, action is the nodes s2v embedding
+            action = graph_embeddings[node_to_add]
 
 
-        #Take action, recieve reward
-        reward, done = graph.selectnode(node_to_add)
-        cumulative_reward+=reward
+            #Take action, recieve reward
+            reward, done = graph.selectnode(node_to_add)
+            cumulative_reward+=reward
 
-        #Determine state t+1
-        next_state = np.add(state, action)
+            #Cache result
+            #agent.cache(state, next_state, action, reward, done)
 
-        #Cache result
-        agent.cache(state, next_state, action, reward, done)
+            #Train
+            if t >= TRAINING_DELAY:
+                if done:
+                    nextstateQ=torch.zeros(1)
+                elif len(graph.nodedict) < graph.solutionsize: #RL agent reached an infeasible solution
+                    nextstateQ = torch.tensor(-100000.0)
+                else:
+                    nextstateQ = max(agent.Q(graph,model='target')[0].values()) #get next state Qvalue with target network
+                agent.learn(nextstateQ+reward,q_value_dict[node_to_add])
 
-        #Train
-        if t >= TRAINING_DELAY:
-            if done:
-                nextstateQ=torch.zeros(1)
-            elif len(graph.nodedict) < graph.solutionsize: #RL agent reached an infeasible solution
-                nextstateQ = torch.tensor(-100.0)
-            else:
-                nextstateQ = max(agent.Q(graph,model='target')[0].values()) #get next state Qvalue with target network
-            agent.learn(nextstateQ+reward,q_value_dict[node_to_add])
+            t += 1
 
-        t += 1
+            if t % TARGET_UPDATE == 0:
+                agent.target_model.load_state_dict(agent.model.state_dict())
 
-        if t % TARGET_UPDATE == 0:
-            agent.target_model.load_state_dict(agent.model.state_dict())
+            if len(graph.nodedict) < graph.solutionsize:  # RL agent reached an infeasible solution
+                print('infeasible')
+                done=True
 
-        if len(graph.nodedict) < graph.solutionsize:  # RL agent reached an infeasible solution
-            done=True
-
-        #Update state
-        state = next_state
-    print(e,cumulative_reward)
+            #Update state
+            state = next_state
+        print(e,cumulative_reward)
+        if e% 100 ==0:
+            torch.save(agent.model.state_dict(), 'ModelParams/firsttest{}'.format(e))
