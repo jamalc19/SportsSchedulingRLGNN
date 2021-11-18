@@ -78,6 +78,7 @@ class Agent:
             self.net = self.model.to(device="cuda")   
 
         self.optimizer = optim.SGD(self.model.parameters(), lr=0.01, momentum=0.9)#TODO tune params
+        #self.loss_fn = nn.SmoothL1Loss()
         self.loss_fn = nn.MSELoss()
 
 
@@ -231,7 +232,7 @@ if __name__=='__main__':
             if t >= TRAINING_DELAY:
                 if done:
                     nextstateQ=torch.zeros(1)
-                elif len(graph.nodedict) < graph.solutionsize: #RL agent reached an infeasible solution
+                elif len(graph.nodedict) + len(graph.solution) < graph.solutionsize: #RL agent reached an infeasible solution
                     nextstateQ = torch.tensor(-100000.0)
                 else:
                     nextstateQ = max(agent.Q(graph,model='target')[0].values()) #get next state Qvalue with target network
@@ -247,7 +248,7 @@ if __name__=='__main__':
                 done=True
 
             #Update state
-            state = next_state
+            #state = next_state
         print(e,cumulative_reward)
         if e% 100 ==0:
             torch.save(agent.model.state_dict(), 'ModelParams/firsttest{}'.format(e))
