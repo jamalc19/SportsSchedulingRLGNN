@@ -891,11 +891,12 @@ if __name__=='__main__':
     import sys
     max_rec = 0x100000
     sys.setrecursionlimit(max_rec)
-    file = 'ITC2021_Test1.xml'
-    g = creategraph('Instances/' + file,hardconstraintcost=1)
-    for node in g.nodedict.values():
-        node.cost=0#TODO for hard constraint testing only
-    pickle.dump(g, open('PreprocessedInstances/OnlyHard'+file.replace('xml','pkl'),'wb'))
+    files = ['ITC2021_Test1.xml','ITC2021_Test2.xml','ITC2021_Test3.xml','ITC2021_Test4.xml']
+    for file in files:
+        g = creategraph('Instances/' + file,hardconstraintcost=1)
+        for node in g.nodedict.values():
+            node.cost=0#TODO for hard constraint testing only
+        pickle.dump(g, open('PreprocessedInstances/OnlyHard'+file.replace('xml','pkl'),'wb'))
     '''
     for file in os.listdir('Instances/'):
         g= creategraph('Instances/'+file)

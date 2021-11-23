@@ -15,36 +15,6 @@ from collections import namedtuple, deque
 from Graph import Graph
 from s2v_scheduling import Model
 
-#*********************************************************************
-# INITIALIZE 
-#*********************************************************************
-
-#Training params
-GAMMA = 0.999
-EPS_START = 0.05
-EPS_END = 0.001
-EPS_DECAY = 1000
-TRAINING_DELAY = 1
-EPISODES = 1000000
-BATCH_SIZE = 128
-TARGET_UPDATE = 3
-N_STEP_LOOKAHEAD=10
-
-#Agent params
-EMBEDDING_SIZE = 64
-CACHE_SIZE = 100
-
-
-#Declare training instances
-#instances= os.listdir('PreprocessedInstances/')
-instances= ['OnlyHardITC2021_Test1.pkl'] #testing on just one instance for now
-
-#Use cuda
-#FIXME device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-use_cuda = torch.cuda.is_available()
-print(f"Using CUDA: {use_cuda}")
-
-
 #***********************************************************************
 #CLASSES
 #***********************************************************************
@@ -153,10 +123,14 @@ class Agent:
             reward:
             done:
         """
-        batch = random.sample(self.memory, BATCH_SIZE)
-        #state, next_state, action, reward, done = map(torch.stack, zip(*batch))
-
-        return batch
+        batch = random.sample(self.memory, min(BATCH_SIZE,len(self.memory)))
+        sortedbatch = {}
+        for b in batch:
+            if b[0] in sortedbatch:
+                sortedbatch[b[0]].append(b[1:])
+            else:
+                sortedbatch[b[0]] = [b[1:]]
+        return sortedbatch
 
     def learn(self, y, Q):
         """Backwards pass for model"""
@@ -174,28 +148,41 @@ class Agent:
     def batch_train(self):
         batch = self.recall()
         self.optimizer.zero_grad()
-        for instance, partial_solution, action in batch:
-            # get to current state
-            graph = pickle.load(open('PreprocessedInstances/' + i, 'rb'))
-            for node_id in partial_solution:
-                graph.selectnode(node_id)
-            #forward pass through the network
-            q_value_dict, graph_embeddings = agent.Q(graph)
-            #get next state and reward
-            reward, done = graph.selectnode(action)
-
-            # compute Q value of next state
-            if done:
-                nextstateQ = torch.zeros(1)
-            elif len(graph.nodedict) + len(graph.solution) < graph.solutionsize:  # RL agent reached an infeasible solution
-                nextstateQ = torch.tensor(-1.0)
-            else:
-                nextstateQ = max(agent.Q(graph, model='target')[0].values())  # get next state Qvalue with target network
-            agent.learn(nextstateQ + reward, q_value_dict[node_to_add])
-
-            loss = self.loss_fn(q_value_dict[action], nextstateQ + reward)/BATCH_SIZE
-
-            loss.backward()
+        for instance in batch: #TODO this only works if graphs aren't dynamically changing besides the selected nodes being marked
+            graph = pickle.load(open('PreprocessedInstances/' + instance, 'rb'))
+            for partial_solution, action in batch[instance]:
+                # get to current state
+                for node_id in partial_solution:
+                    graph.nodedict[node_id].selected=True
+                    #graph.selectnode(node_id) #save for if we do use the dynamically changing graphs
+                #forward pass through the network
+                q_value_dict, graph_embeddings = self.Q(graph)
+                #get next state and reward
+                reward, done = graph.selectnode(action)
+                # compute Q value of next state
+                nsteprewards = 0
+                if done:
+                    nextstateQ = torch.zeros(1)
+                elif len(graph.nodedict) + len(graph.solution) < graph.solutionsize:  # RL agent reached an infeasible solution
+                    nextstateQ = torch.tensor(-1.0)
+                else:
+                    with torch.no_grad():
+                        for i in range(N_STEP_LOOKAHEAD):
+                            if not done:
+                                nstep_q_value_dict, nstep_graph_embeddings=self.Q(graph, model='target')
+                                node_to_add = self.greedy(nstep_q_value_dict)
+                                reward, done = graph.selectnode(node_to_add)
+                                nsteprewards+=reward
+                                if len(graph.nodedict) < graph.solutionsize:  # RL agent reached an infeasible solution
+                                    print('infeasible')
+                                    done = True
+                        nextstateQ = max(self.Q(graph, model='target')[0].values())  # get next state Qvalue with target network
+                loss = self.loss_fn(q_value_dict[action], nextstateQ +nsteprewards+ reward)/min(BATCH_SIZE,len(self.memory))
+                loss.backward()
+                #revert graph to base state
+                for node_id in graph.solution:
+                    graph.nodedict[node_id].selected = False
+                graph.solution=set()
         self.optimizer.step()
 
     def rollout(self, i):
@@ -205,9 +192,8 @@ class Agent:
             done = False
             cumulative_reward = -graph.costconstant
             while not done:
-                q_value_dict, graph_embeddings = agent.Q(graph)
-                node_to_add = agent.greedy(q_value_dict)
-                action = graph_embeddings[node_to_add]
+                q_value_dict, graph_embeddings = self.Q(graph)
+                node_to_add = self.greedy(q_value_dict)
                 # Take action, recieve reward
                 reward, done = graph.selectnode(node_to_add)
                 cumulative_reward += reward
@@ -216,15 +202,7 @@ class Agent:
                     done = True
         return cumulative_reward
 
-
-
-#***********************************************************************
-#TRAINING
-#***********************************************************************
-warmstart=False
-#warmstart = 'ModelParams/firsttestwarmstart1000'
-if __name__=='__main__':
-
+def main():
     #Create agent
     agent = Agent()
     if warmstart:
@@ -233,13 +211,11 @@ if __name__=='__main__':
     np.random.seed(0)
     torch.manual_seed(0)
     #Training loop
-
+    t = 1
     for e in range(EPISODES):
         i = instances[np.random.randint(0,len(instances))] #sample the next instance from a uniform distribution
         graph = pickle.load(open('PreprocessedInstances/'+i,'rb'))
-
         done = False
-        t = 1 #TODO set training delay
         cumulative_reward = -graph.costconstant
         #Training
         while not done:
@@ -249,7 +225,7 @@ if __name__=='__main__':
             node_to_add = agent.greedyepsilon(q_value_dict,t)  # node_to_add is the selected nodeid, action is the nodes s2v embedding
 
             #Cache state and action
-            agent.cache(i, graph.solution, node_to_add)
+            agent.cache(i, graph.solution.copy(), node_to_add)
 
             #Take action, recieve reward
             reward, done = graph.selectnode(node_to_add)
@@ -257,19 +233,13 @@ if __name__=='__main__':
 
             #Train
             if t >= TRAINING_DELAY:
-                #agent.batch_train()
-                if done:
-                    nextstateQ=torch.zeros(1)
-                elif len(graph.nodedict) + len(graph.solution) < graph.solutionsize: #RL agent reached an infeasible solution
-                    nextstateQ = torch.tensor(-1.0)
-                else:
-                    nextstateQ = max(agent.Q(graph,model='target')[0].values()) #get next state Qvalue with target network
-                agent.learn(nextstateQ+reward,q_value_dict[node_to_add])
-
+                if t%OPTIMIZE_FREQUENCY:
+                    agent.batch_train()
+                if t % TARGET_UPDATE == 0:
+                    agent.target_model.load_state_dict(agent.model.state_dict())
             t += 1
 
-            if t % TARGET_UPDATE == 0:
-                agent.target_model.load_state_dict(agent.model.state_dict())
+
 
             if len(graph.nodedict) < graph.solutionsize:  # RL agent reached an infeasible solution
                 print('infeasible')
@@ -277,11 +247,51 @@ if __name__=='__main__':
 
             #Update state
             #state = next_state
-        print(e,cumulative_reward)
+        print(e,i,cumulative_reward)
 
-        if e% 100 ==0:
-            torch.save(agent.model.state_dict(), 'ModelParams/s2visactuallytraining{}'.format(e))
+        if (t >= TRAINING_DELAY) and (e% SAVE_FREQUENCY ==0):
+            torch.save(agent.model.state_dict(), 'ModelParams/{}{}'.format(RUN_NAME,e))
 
-        if e%10==0:#rollout
-            cumulative_reward=agent.rollout(i)
-            print('Rollout Cumulative Reward:',cumulative_reward)
+        if (t >= TRAINING_DELAY) and (e%ROLLOUT_FREQUENCY==0):#rollout
+            for i in instances:
+                cumulative_reward=agent.rollout(i)
+                print('Rollout Cumulative Reward for {}: {}'.format(i,cumulative_reward))
+
+#*********************************************************************
+# INITIALIZE
+#*********************************************************************
+
+#Training params
+EPS_START = 0.1
+EPS_END = 0.001
+EPS_DECAY = 1000
+TRAINING_DELAY = 100
+EPISODES = 1000000
+BATCH_SIZE = 32
+N_STEP_LOOKAHEAD=10
+TARGET_UPDATE = 10
+OPTIMIZE_FREQUENCY=10
+
+#Agent params
+EMBEDDING_SIZE = 64
+CACHE_SIZE = 1000
+
+
+#Declare training instances
+#instances= os.listdir('PreprocessedInstances/')
+instances=['OnlyHardITC2021_Test1.pkl','OnlyHardITC2021_Test2.pkl','OnlyHardITC2021_Test3.pkl','OnlyHardITC2021_Test4.pkl']#testing on just the small instances for now
+#Use cuda
+#FIXME device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+use_cuda = torch.cuda.is_available()
+print(f"Using CUDA: {use_cuda}")
+
+#***********************************************************************
+#TRAINING
+#***********************************************************************
+warmstart=False
+warmstart = 'ModelParams/s2visactuallytraining200'
+RUN_NAME = 'BatchTrainingFirstAttempt'
+ROLLOUT_FREQUENCY =10
+SAVE_FREQUENCY = 10
+if __name__=='__main__':
+    main()
