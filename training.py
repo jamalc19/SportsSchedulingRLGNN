@@ -37,18 +37,17 @@ class Agent:
         self.target_model = Model(EMBEDDING_SIZE)
         self.target_model.load_state_dict(self.model.state_dict())
 
-        self.use_cuda = torch.cuda.is_available()
-        if self.use_cuda:
-            self.net = self.model.to(device="cuda")   
+        #self.use_cuda = torch.cuda.is_available()
+        # if self.use_cuda:
+        #     self.net = self.model.to(device="cuda")   
 
-        self.optimizer =optim.RMSprop(self.model.parameters())#TODO tune params
+        self.optimizer = optim.RMSprop(self.model.parameters())#TODO tune params
         self.loss_fn = nn.SmoothL1Loss()
         #self.loss_fn = nn.MSELoss()
 
 
     def Q(self,graph,model='model'):
         '''
-
         :param graph:
         :param model: str in ('model','target')
         :return:
@@ -74,14 +73,12 @@ class Agent:
             action: the embedding for the corresponding nodeID
         """
 
-
         #eps-greedy action
         EPS = EPS_END + (EPS_START - EPS_END) * math.exp(-1. * t / EPS_DECAY)
         if random.random() <= EPS: #select random node to add
             actionID = random.choice(list(q_value_dict.keys()))
         else: #select node with highest q
             actionID = max(q_value_dict, key=q_value_dict.get)
-
 
         return actionID #int,
 
@@ -210,19 +207,20 @@ def main():
 
     np.random.seed(0)
     torch.manual_seed(0)
+
     #Training loop
     t = 1
     for e in range(EPISODES):
         i = instances[np.random.randint(0,len(instances))] #sample the next instance from a uniform distribution
-        graph = pickle.load(open('PreprocessedInstances/'+i,'rb'))
+        graph = pickle.load(open('PreprocessedInstances/'+i, 'rb'))
         done = False
         cumulative_reward = -graph.costconstant
+        
         #Training
         while not done:
             #Determine which action to take
             q_value_dict, graph_embeddings = agent.Q(graph)
-            #node_to_add= agent.greedy(q_value_dict) #node_to_add is the selected nodeid, action is the nodes s2v embedding
-            node_to_add = agent.greedyepsilon(q_value_dict,t)  # node_to_add is the selected nodeid, action is the nodes s2v embedding
+            node_to_add = agent.greedyepsilon(q_value_dict, t)  # node_to_add is the selected nodeid, action is the nodes s2v embedding
 
             #Cache state and action
             agent.cache(i, graph.solution.copy(), node_to_add)
@@ -233,13 +231,11 @@ def main():
 
             #Train
             if t >= TRAINING_DELAY:
-                if t%OPTIMIZE_FREQUENCY:
+                if t % OPTIMIZE_FREQUENCY:
                     agent.batch_train()
                 if t % TARGET_UPDATE == 0:
                     agent.target_model.load_state_dict(agent.model.state_dict())
             t += 1
-
-
 
             if len(graph.nodedict) < graph.solutionsize:  # RL agent reached an infeasible solution
                 print('infeasible')
@@ -247,15 +243,15 @@ def main():
 
             #Update state
             #state = next_state
-        print(e,i,cumulative_reward)
+        print(e, i, cumulative_reward)
 
-        if (t >= TRAINING_DELAY) and (e% SAVE_FREQUENCY ==0):
-            torch.save(agent.model.state_dict(), 'ModelParams/{}{}'.format(RUN_NAME,e))
+        if (t >= TRAINING_DELAY) and (e % SAVE_FREQUENCY ==0):
+            torch.save(agent.model.state_dict(), 'ModelParams/{}{}'.format(RUN_NAME, e))
 
-        if (t >= TRAINING_DELAY) and (e%ROLLOUT_FREQUENCY==0):#rollout
+        if (t >= TRAINING_DELAY) and (e % ROLLOUT_FREQUENCY==0):#rollout
             for i in instances:
                 cumulative_reward=agent.rollout(i)
-                print('Rollout Cumulative Reward for {}: {}'.format(i,cumulative_reward))
+                print('Rollout Cumulative Reward for {}: {}'.format(i, cumulative_reward))
 
 #*********************************************************************
 # INITIALIZE
@@ -265,9 +261,9 @@ def main():
 EPS_START = 0.1
 EPS_END = 0.001
 EPS_DECAY = 1000
-TRAINING_DELAY = 100
+TRAINING_DELAY = 10
 EPISODES = 1000000
-BATCH_SIZE = 32
+BATCH_SIZE = 10
 N_STEP_LOOKAHEAD=10
 TARGET_UPDATE = 10
 OPTIMIZE_FREQUENCY=10
@@ -276,22 +272,23 @@ OPTIMIZE_FREQUENCY=10
 EMBEDDING_SIZE = 64
 CACHE_SIZE = 1000
 
-
-#Declare training instances
-#instances= os.listdir('PreprocessedInstances/')
-instances=['OnlyHardITC2021_Test1.pkl','OnlyHardITC2021_Test2.pkl','OnlyHardITC2021_Test3.pkl','OnlyHardITC2021_Test4.pkl']#testing on just the small instances for now
-#Use cuda
-#FIXME device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-use_cuda = torch.cuda.is_available()
-print(f"Using CUDA: {use_cuda}")
-
-#***********************************************************************
-#TRAINING
-#***********************************************************************
-warmstart=False
-warmstart = 'ModelParams/s2visactuallytraining200'
 RUN_NAME = 'BatchTrainingFirstAttempt'
 ROLLOUT_FREQUENCY =10
 SAVE_FREQUENCY = 10
+
+warmstart=False
+# warmstart = 'ModelParams/s2visactuallytraining200'
+
+#Use cuda
+device = torch.device("cpu")
+# use_cuda = torch.cuda.is_available()
+# print(f"Using CUDA: {use_cuda}")
+
+#Declare training instances
+#instances= os.listdir('PreprocessedInstances/')
+#instances=['OnlyHardITC2021_Test1.pkl','OnlyHardITC2021_Test2.pkl','OnlyHardITC2021_Test3.pkl','OnlyHardITC2021_Test4.pkl']#testing on just the small instances for now
+instances=['OnlyHardITC2021_Test1.pkl']
+
+
 if __name__=='__main__':
     main()
