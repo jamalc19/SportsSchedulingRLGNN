@@ -77,7 +77,7 @@ def training():
             cumulative_reward+=reward      
             added_nodes.append(node_to_add)
             #print("added node: {n}, reward was {r}, cumulative reward is {c}, solution size is {s}, done is {d}".format(n=node_to_add, r=reward, c=cumulative_reward, s=len(added_nodes), d=done))    
-        print("Solved instance {i}, reward was {r}, cumulative reward was {c}, solution size was {s}".format(i=instance, r=reward, c=cumulative_reward, s=len(added_nodes)))
+        print("Solved instance {i}, cumulative reward was {c}, solution size was {s}".format(i=instance, c=cumulative_reward, s=len(added_nodes)))
 
 if __name__=='__main__':
     training()
