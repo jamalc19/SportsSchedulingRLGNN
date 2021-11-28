@@ -216,7 +216,6 @@ class Graph:
     def addEdge(self, node1,node2,weight,hard=False,Complex=False, constraintid=None):
         #if edge already exists then increment cost. If complex then add complex id
         #else create new edge
-
         if node1.edges_hard.get(node2.id) is not None:
             # if a hard constraint already exists between these nodes then don't bother adding anything. Breaking this constraint already makes the problem infeasible
             #this will reduce size of graph and hopefully make edges more interpretable for struct2vec/RL algo
@@ -715,7 +714,7 @@ class Graph:
         intp = int(C.get('intp'))
         slots = [int(s) for s in C.get('slots').split(';')]
         teams = [int(t) for t in C.get('teams').split(';')]
-        mode = C.get('mode1')
+        mode = C.get('mode2')
         penalty=int(C.get('penalty'))
         hard= C.get('type')=='HARD'
         if hard:
@@ -732,6 +731,7 @@ class Graph:
             else:
                 Complex=False
                 constraintid=None
+
             for opponent1 in self.teams:
                 if opponent1!=team:
                     for opponent2 in self.teams:
