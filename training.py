@@ -1,9 +1,5 @@
 # DEPENDENCIES
-import math
-
 import numpy as np
-import random
-import copy
 import os
 import pickle
 
@@ -19,15 +15,39 @@ from RLAgent import RLAgent
 
 def main():
 
+    #Set up outputs
+    param_output_list = [
+        'RUN_NAME: ' + RUN_NAME + '\n',
+        'INSTANCE_SUMMARY ' + INSTANCE_SUMMARY +'\n', 
+        '\n***********************AGENT PARAMS*******************\n\n',
+        'CACHE_SIZE: ' + str(CACHE_SIZE) + '\n',
+        'EMBEDDING_SIZE: ' + str(EMBEDDING_SIZE) + '\n'
+        'EPS_START: ' + str(EPS_START) + '\n',
+        'EPS_END: ' + str(EPS_END) + '\n',
+        'EPS_STEP: ' + str(EPS_STEP) + '\n',
+        'GAMMA: ' + str(GAMMA) + '\n',
+        'BATCH_SIZE: ' + str(BATCH_SIZE) + '\n',
+        'N_STEP_LOOKAHEAD: ' + str(N_STEP_LOOKAHEAD) + '\n',
+        '\n*******************TRAINING PARAMS********************\n\n',
+        'EPISODES: ' + str(EPISODES) + '\n',
+        'TRAINING_DELAY: ' + str(TRAINING_DELAY) + '\n',
+        'TARGET_UPDATE: ' + str(TARGET_UPDATE) + '\n',
+        'OPTIMIZE_FREQUENCY: ' + str(OPTIMIZE_FREQUENCY) + '\n',
+        'ROLLOUT_FREQUENCY: ' + str(ROLLOUT_FREQUENCY) + '\n',
+        'SAVE_FREQUENCY: ' + str(SAVE_FREQUENCY) + '\n'
+        ]
+    param_output = open('TestResults/{name}.txt'.format(name = RUN_NAME), 'w')
+    param_output.writelines(param_output_list)
+    param_output.close()
+
+    training_output = open("TestResults/{name}.csv".format(name=RUN_NAME), 'w')
+    training_output.write('episode,instance,feasible?,cumulative reward,solution length\n')
+
     #Create agent
     agent = RLAgent(CACHE_SIZE=CACHE_SIZE,EMBEDDING_SIZE=EMBEDDING_SIZE,EPS_START=EPS_START,EPS_END=EPS_END,EPS_STEP=EPS_STEP,
                     GAMMA=GAMMA,N_STEP_LOOKAHEAD=N_STEP_LOOKAHEAD,BATCH_SIZE=BATCH_SIZE)
     if warmstart:
         agent.model.load_state_dict(torch.load(warmstart))
-
-    #Result output
-    output = open("TestResults/RLsolutions.csv", 'w')
-    output.write('episode,instance,feasible?,cumulative reward,solution length\n')
 
     #Training loop
     np.random.seed(0)
@@ -63,10 +83,8 @@ def main():
                     agent.target_model.load_state_dict(agent.model.state_dict())
             t += 1
 
-            # Update state
-            # state = next_state
-        print(e, i, cumulative_reward, len(graph.solution), graph.solutionsize)
-        output.write('{e},{i},{f},{c},{s}\n'.format(e=e, i=i, f=feasible, c=cumulative_reward, s=len(graph.solution)))
+        print(e, i, feasible, cumulative_reward, len(graph.solution), graph.solutionsize)
+        training_output.write('{e},{i},{f},{c},{s},{gs}\n'.format(e=e, i=i, f=feasible, c=cumulative_reward, s=len(graph.solution), gs = graph.solutionsize))
 
         if (t >= TRAINING_DELAY) and (e % SAVE_FREQUENCY == 0):
             torch.save(agent.model.state_dict(), 'ModelParams/{}{}'.format(RUN_NAME, e))
@@ -79,42 +97,44 @@ def main():
                                                                                                  solutionlength,fullsolutionsize))
                 Rollouts[e][i] = (cumulative_reward,solutionlength,fullsolutionsize)
             pickle.dump(Rollouts,open('Results/{}{}'.format(RUN_NAME, e),'wb'))
-    output.close()
+    training_output.close()
 
 
 # *********************************************************************
 # INITIALIZE
 # *********************************************************************
 
-# Training params
+RUN_NAME = '1-hop-lookahead-only'
+
+# Agent params
+CACHE_SIZE = 1000
+EMBEDDING_SIZE = 64
 EPS_START = 1.0
 EPS_END = 0.05
 EPS_STEP = 10000
-TRAINING_DELAY = 100
-EPISODES = 30000
+GAMMA = 0.9
 BATCH_SIZE = 64
 N_STEP_LOOKAHEAD = 5
+
+# Training params
+EPISODES = 30000
+TRAINING_DELAY = 100
 TARGET_UPDATE = 10
 OPTIMIZE_FREQUENCY = 10
-GAMMA = 0.9
-
-# Agent params
-EMBEDDING_SIZE = 64
-CACHE_SIZE = 1000
+ROLLOUT_FREQUENCY = 50
+SAVE_FREQUENCY = 10
 
 # Declare training instances
-#instances= [inst for inst in os.listdir('PreprocessedInstances/') if 'NoComplexgen_instance' in inst]
-instances= [inst for inst in os.listdir('PreprocessedInstances/')]
+INSTANCE_SUMMARY = 'Preproccessed synthetic instances with no complex constraints'
+instances= [inst for inst in os.listdir('PreprocessedInstances/') if 'NoComplexgen_instance' in inst]
+#instances= [inst for inst in os.listdir('PreprocessedInstances/')]
 #instances = ['OnlyHardITC2021_Test1.pkl', 'OnlyHardITC2021_Test2.pkl', 'OnlyHardITC2021_Test3.pkl','OnlyHardITC2021_Test4.pkl']  # testing on just the small instances for now
 
+warmstart = False
+#warmstart = 'ModelParams/128EmbeddingSize10'
 
 # ***********************************************************************
 # TRAINING
 # ***********************************************************************
-warmstart = False
-#warmstart = 'ModelParams/128EmbeddingSize10'
-RUN_NAME = 'SyntheticInstancesFirstTrain'
-ROLLOUT_FREQUENCY = 50
-SAVE_FREQUENCY = 10
 if __name__ == '__main__':
     main()
