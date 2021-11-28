@@ -51,9 +51,7 @@ class GreedyAgent:
         return df.iloc[0].nodeID
 
 
-
-
-def training():
+def solving():
     agent = GreedyAgent()  
 
     instances=['OnlyHardITC2021_Test1.pkl','OnlyHardITC2021_Test2.pkl','OnlyHardITC2021_Test3.pkl','OnlyHardITC2021_Test4.pkl']
@@ -80,4 +78,4 @@ def training():
         print("Solved instance {i}, cumulative reward was {c}, solution size was {s}".format(i=instance, c=cumulative_reward, s=len(added_nodes)))
 
 if __name__=='__main__':
-    training()
+    solving()
