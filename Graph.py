@@ -58,10 +58,11 @@ class Graph:
         reward = self.computereward(nodeid)
         node = self.nodedict[nodeid]
         node.selected = True
+        '''
         if True: #TODO remove. temporary to test Q learning
             self.solution.add(nodeid)
             return reward, len(self.solution) == self.solutionsize
-
+        '''
         constraintids=set()
         for edge in node.edges_soft.keys(): #update non-complex soft constraints
             constraintids |= node.edges_soft[edge].constraintids
@@ -83,7 +84,15 @@ class Graph:
         for deletenodeid in set(node.edges_hard.keys()):  # delete all nodes connected to this one by a hard constraint
             self.deletenodebyid(deletenodeid)
         self.solution.add(nodeid)
-        return reward, len(self.solution)==self.solutionsize
+        done=False
+        if len(self.solution)==self.solutionsize:
+            done=True
+            reward=1 #TODO Temporarily give reward for feasible solution
+        if len(self.nodedict) < self.solutionsize:  # RL agent reached an infeasible solution
+            done = True
+            reward-= self.hardconstraintcost
+        reward = max(reward,-self.hardconstraintcost)
+        return reward, done
 
     def computereward(self,nodeid):
         node = self.nodedict[nodeid]
