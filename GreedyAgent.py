@@ -1,5 +1,6 @@
 #DEPENDENCIES
 import pickle
+import os
 
 from Graph import Graph
 
@@ -23,6 +24,7 @@ class GreedyAgent:
         bestincurredcost=99999999999999999
         bestpotentialcost=0
 
+        debugging = graph.getActions()
         for nodeID in graph.getActions():
             potentialcost = 0
             incurredcost = 0
@@ -49,22 +51,50 @@ class GreedyAgent:
 def solving():
     agent = GreedyAgent()  
 
-    instances=['OnlyHardITC2021_Test1.pkl','OnlyHardITC2021_Test2.pkl','OnlyHardITC2021_Test3.pkl','OnlyHardITC2021_Test4.pkl']
+    instances = [inst for inst in os.listdir('PreprocessedInstances/')]
+
+    output = open("TestResults/HeuristicSolutions.csv", 'a')
+    output.write('instance,feasible?,cumulative reward,solution length')
+    
+    for instance in instances:
+        graph = pickle.load(open('PreprocessedInstances/'+instance, 'rb'))
+        done = False
+        cumulative_reward = -graph.costconstant
+        added_nodes = []
+
+        #Training
+        while not done:
+            node_to_add = agent.greedy_action(graph)
+            
+            reward, done, feasible = graph.selectnode(node_to_add)
+            cumulative_reward+=reward
+            #print("added node: {n}, reward was {r}, cumulative reward is {c}, solution size is {s}, done is {d}".format(n=node_to_add, r=reward, c=cumulative_reward, s=len(added_nodes), d=done))
+            added_nodes.append(node_to_add)    
+        #print('{i} solution {f} \t\t cumulative reward was {c} \t\t solution size was {s}'.format(i=instance, f=feasible, c=cumulative_reward, s=len(graph.solution)))
+        output.write('{i},{f},{c},{s}\n'.format(i=instance, f=feasible, c=cumulative_reward, s=len(graph.solution)))
+    output.close()
+
+def testing():
+    agent = GreedyAgent()  
+
+    instances=['OnlyHardITC2021_Test4.pkl']
 
     for instance in instances:
         graph = pickle.load(open('PreprocessedInstances/'+instance, 'rb'))
         done = False
         cumulative_reward = -graph.costconstant
+        added_nodes = []
 
         #Training
         while not done:
-            #print("current solution is: ", added_nodes)
-            node_to_add = agent.greedy_action( graph)
+            node_to_add = agent.greedy_action(graph)
             
             reward, done = graph.selectnode(node_to_add)
             cumulative_reward+=reward
-            #print("added node: {n}, reward was {r}, cumulative reward is {c}, solution size is {s}, done is {d}".format(n=node_to_add, r=reward, c=cumulative_reward, s=len(added_nodes), d=done))    
+            #print("added node: {n}, reward was {r}, cumulative reward is {c}, solution size is {s}, done is {d}".format(n=node_to_add, r=reward, c=cumulative_reward, s=len(added_nodes), d=done))
+            added_nodes.append(node_to_add)    
         print("Solved instance {i}, cumulative reward was {c}, solution size was {s}".format(i=instance, c=cumulative_reward, s=len(graph.solution)))
+    
 
 if __name__=='__main__':
     solving()
