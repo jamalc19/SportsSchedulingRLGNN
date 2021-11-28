@@ -218,6 +218,8 @@ class Graph:
     def addEdge(self, node1,node2,weight,hard=False,Complex=False, constraintid=None):
         #if edge already exists then increment cost. If complex then add complex id
         #else create new edge
+        if Complex:
+            return
         if node1.edges_hard.get(node2.id) is not None:
             # if a hard constraint already exists between these nodes then don't bother adding anything. Breaking this constraint already makes the problem infeasible
             #this will reduce size of graph and hopefully make edges more interpretable for struct2vec/RL algo
@@ -914,7 +916,7 @@ if __name__=='__main__':
     #         node.cost=0#TODO for hard constraint testing only
     for file in os.listdir('GenInstances/'):
         g = creategraph('GenInstances/'+file, hardconstraintcost=10000)
-        pickle.dump(g, open('PreprocessedInstances/' + file.replace('xml','pkl'),'wb'))
+        pickle.dump(g, open('PreprocessedInstances/' +"NoComplex"+ file.replace('xml','pkl'),'wb'))
 
     #print(len(g.teams),len(g.nodedict), len(g.nodedict)/(2*len(g.teams)*(len(g.teams)-1)**2)) #max num of nodes is 2*n*(n-1)^2
 
