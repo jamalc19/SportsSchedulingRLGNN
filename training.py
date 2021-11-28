@@ -67,7 +67,6 @@ def main():
             # state = next_state
         print(e, i, cumulative_reward, len(graph.solution), graph.solutionsize)
         output.write('{e},{i},{f},{c},{s}\n'.format(e=e, i=i, f=feasible, c=cumulative_reward, s=len(graph.solution)))
-    output.close()
 
         if (t >= TRAINING_DELAY) and (e % SAVE_FREQUENCY == 0):
             torch.save(agent.model.state_dict(), 'ModelParams/{}{}'.format(RUN_NAME, e))
@@ -80,6 +79,7 @@ def main():
                                                                                                  solutionlength,fullsolutionsize))
                 Rollouts[e][i] = (cumulative_reward,solutionlength,fullsolutionsize)
             pickle.dump(Rollouts,open('Results/{}{}'.format(RUN_NAME, e),'wb'))
+    output.close()
 
 
 # *********************************************************************
