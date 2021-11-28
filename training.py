@@ -28,6 +28,7 @@ def main():
         'GAMMA: ' + str(GAMMA) + '\n',
         'BATCH_SIZE: ' + str(BATCH_SIZE) + '\n',
         'N_STEP_LOOKAHEAD: ' + str(N_STEP_LOOKAHEAD) + '\n',
+        'S2V_T: ' + str(S2V_T) + '\n',
         '\n*******************TRAINING PARAMS********************\n\n',
         'EPISODES: ' + str(EPISODES) + '\n',
         'TRAINING_DELAY: ' + str(TRAINING_DELAY) + '\n',
@@ -45,7 +46,7 @@ def main():
 
     #Create agent
     agent = RLAgent(CACHE_SIZE=CACHE_SIZE,EMBEDDING_SIZE=EMBEDDING_SIZE,EPS_START=EPS_START,EPS_END=EPS_END,EPS_STEP=EPS_STEP,
-                    GAMMA=GAMMA,N_STEP_LOOKAHEAD=N_STEP_LOOKAHEAD,BATCH_SIZE=BATCH_SIZE)
+                    GAMMA=GAMMA,N_STEP_LOOKAHEAD=N_STEP_LOOKAHEAD, S2V_T = S2V_T, BATCH_SIZE=BATCH_SIZE)
     if warmstart:
         agent.model.load_state_dict(torch.load(warmstart))
 
@@ -115,6 +116,7 @@ EPS_STEP = 10000
 GAMMA = 0.9
 BATCH_SIZE = 64
 N_STEP_LOOKAHEAD = 5
+S2V_T = 4
 
 # Training params
 EPISODES = 30000

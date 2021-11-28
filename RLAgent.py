@@ -27,12 +27,13 @@ class RLAgent:
         optimizer:
     """
 
-    def __init__(self,CACHE_SIZE=1000,EMBEDDING_SIZE=128,EPS_START=1.0,EPS_END=0.05,EPS_STEP=10000,GAMMA=0.9,N_STEP_LOOKAHEAD=5,BATCH_SIZE=64):
+    def __init__(self,CACHE_SIZE=1000,EMBEDDING_SIZE=128,EPS_START=1.0,EPS_END=0.05,EPS_STEP=10000,GAMMA=0.9,N_STEP_LOOKAHEAD=5, S2V_T=4, BATCH_SIZE=64):
         super().__init__()
         self.EPS_START=EPS_START
         self.EPS_END=EPS_END
         self.EPS_STEP=EPS_STEP
         self.N_STEP_LOOKAHEAD=N_STEP_LOOKAHEAD
+        self.S2V_T = S2V_T
         self.GAMMA=GAMMA
         self.BATCH_SIZE=BATCH_SIZE
         self.memory = deque(maxlen=CACHE_SIZE)
@@ -53,7 +54,7 @@ class RLAgent:
         :return:
         '''
         network = self.model if model == 'model' else self.target_model
-        graph_embeddings = network.structure2vec(graph)
+        graph_embeddings = network.structure2vec(graph, self.S2V_T) #TODO edit lookahead size
 
         q_value_dict = {}
         for nodeID in graph.getActions():
