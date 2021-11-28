@@ -395,6 +395,7 @@ class Graph:
         opponents = [int(o) for o in C.get('teams2').split(';')]
         mode = C.get('mode1')
         hard= C.get('type')=='HARD'
+        hard=False #TODO Remove this if using ITC instances
         if hard:
             penalty=self.hardconstraintcost
         slots= [int(s) for s in C.get('slots').split(';')]

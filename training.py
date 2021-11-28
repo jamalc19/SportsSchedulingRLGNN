@@ -89,14 +89,14 @@ BATCH_SIZE = 64
 N_STEP_LOOKAHEAD = 5
 TARGET_UPDATE = 10
 OPTIMIZE_FREQUENCY = 10
-GAMMA = 1.0
+GAMMA = 0.9
 
 # Agent params
 EMBEDDING_SIZE = 64
 CACHE_SIZE = 1000
 
 # Declare training instances
-instances= [inst for inst in os.listdir('PreprocessedInstances/') if 'gen_instance' in inst]
+instances= [inst for inst in os.listdir('PreprocessedInstances/') if 'NoComplexgen_instance' in inst]
 #instances = ['OnlyHardITC2021_Test1.pkl', 'OnlyHardITC2021_Test2.pkl', 'OnlyHardITC2021_Test3.pkl','OnlyHardITC2021_Test4.pkl']  # testing on just the small instances for now
 
 
