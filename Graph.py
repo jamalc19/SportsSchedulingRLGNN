@@ -85,13 +85,15 @@ class Graph:
             self.deletenodebyid(deletenodeid)
         self.solution.add(nodeid)
         done=False
+        feasible = True
         if len(self.solution)==self.solutionsize:
             done=True
         if len(self.nodedict) < self.solutionsize:  # RL agent reached an infeasible solution
             done = True
             reward-= self.hardconstraintcost
+            feasible = False
         reward = max(reward,-self.hardconstraintcost)
-        return reward, done
+        return reward, done, feasible
 
     def computereward(self,nodeid):
         node = self.nodedict[nodeid]
