@@ -106,7 +106,7 @@ class Model(nn.Module):
                 mu_all[self.node_id_to_tensor_index[node]] = self.forward(xi, mu_N, h, hc, s, sc)
                 #x_all.append(xi)
 
-            return dict(zip(graph.nodedict.keys(), mu_all.data))
+            return dict(zip(graph.nodedict.keys(), mu_all))
 
 
     def q_calc(self,embedding_dict, node_num):

@@ -58,6 +58,9 @@ class Graph:
         reward = self.computereward(nodeid)
         node = self.nodedict[nodeid]
         node.selected = True
+        if True: #TODO remove. temporary to test Q learning
+            self.solution.add(nodeid)
+            return reward, len(self.solution) == self.solutionsize
 
         constraintids=set()
         for edge in node.edges_soft.keys(): #update non-complex soft constraints
@@ -203,6 +206,8 @@ class Graph:
 
 
     def addEdge(self, node1,node2,weight,hard=False,Complex=False, constraintid=None):
+        if (not hard) or Complex:#TODO remove this line. Temporary to test Qlearning
+            return
         #if edge already exists then increment cost. If complex then add complex id
         #else create new edge
         if node1.edges_hard.get(node2.id) is not None:
@@ -886,9 +891,12 @@ if __name__=='__main__':
     import sys
     max_rec = 0x100000
     sys.setrecursionlimit(max_rec)
-    file = 'ITC2021_Test1.xml'
-    g = creategraph('Instances/' + file)
-    pickle.dump(g, open('PreprocessedInstances/'+file.replace('xml','pkl'),'wb'))
+    files = ['ITC2021_Test1.xml','ITC2021_Test2.xml','ITC2021_Test3.xml','ITC2021_Test4.xml']
+    for file in files:
+        g = creategraph('Instances/' + file,hardconstraintcost=1)
+        for node in g.nodedict.values():
+            node.cost=0#TODO for hard constraint testing only
+        pickle.dump(g, open('PreprocessedInstances/OnlyHard'+file.replace('xml','pkl'),'wb'))
     '''
     for file in os.listdir('Instances/'):
         g= creategraph('Instances/'+file)
