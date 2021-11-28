@@ -24,11 +24,10 @@ class GreedyAgent:
         bestincurredcost=99999999999999999
         bestpotentialcost=0
 
-        debugging = graph.getActions()
         for nodeID in graph.getActions():
             potentialcost = 0
-            incurredcost = 0
             node = graph.nodedict[nodeID]
+            incurredcost = node.cost
             for edgeset in (node.edges_soft,node.edges_hard):
                 for othernode in edgeset:
                     edge = edgeset[othernode]
@@ -89,7 +88,7 @@ def testing():
         while not done:
             node_to_add = agent.greedy_action(graph)
             
-            reward, done = graph.selectnode(node_to_add)
+            reward, done, feas= graph.selectnode(node_to_add)
             cumulative_reward+=reward
             #print("added node: {n}, reward was {r}, cumulative reward is {c}, solution size is {s}, done is {d}".format(n=node_to_add, r=reward, c=cumulative_reward, s=len(added_nodes), d=done))
             added_nodes.append(node_to_add)    
