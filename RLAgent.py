@@ -22,27 +22,24 @@ class RLAgent:
 
     Attributes
         memory: stores previous instances for model training
-        model: nn.module subclass for deep Q
-        use_cuda: Boolean for cuda availability
+        model: nn.module subclass for deep
         loss_fn:
         optimizer:
     """
 
-    def __init__(self,CACHE_SIZE=1000,EMBEDDING_SIZE=128,EPS_START=0.1,EPS_END=0.075,EPS_DECAY=1000,GAMMA=0.9,N_STEP_LOOKAHEAD=5) -> None:
+    def __init__(self,CACHE_SIZE=1000,EMBEDDING_SIZE=128,EPS_START=1.0,EPS_END=0.05,EPS_STEP=10000,GAMMA=0.9,N_STEP_LOOKAHEAD=5,BATCH_SIZE=64):
         super().__init__()
         self.EPS_START=EPS_START
         self.EPS_END=EPS_END
-        self.EPS_DECAY=EPS_DECAY
+        self.EPS_STEP=EPS_STEP
         self.N_STEP_LOOKAHEAD=N_STEP_LOOKAHEAD
         self.GAMMA=GAMMA
+        self.BATCH_SIZE=BATCH_SIZE
         self.memory = deque(maxlen=CACHE_SIZE)
         self.model = Model(EMBEDDING_SIZE)
         self.target_model = Model(EMBEDDING_SIZE)
         self.target_model.load_state_dict(self.model.state_dict())
 
-        self.use_cuda = torch.cuda.is_available()
-        if self.use_cuda:
-            self.net = self.model.to(device="cuda")
 
         self.optimizer = optim.RMSprop(self.model.parameters())  # TODO tune params
         self.loss_fn = nn.SmoothL1Loss()
@@ -75,7 +72,7 @@ class RLAgent:
             action: the embedding for the corresponding nodeID
         """
         # eps-greedy action
-        EPS = self.EPS_END + (self.EPS_START - self.EPS_END) * math.exp(-1. * t / self.EPS_DECAY)
+        EPS = self.EPS_END + max(0,(self.EPS_START - self.EPS_END) * (self.EPS_STEP- t) / self.EPS_STEP)
         if random.random() <= EPS:  # select random node to add
             actionID = random.choice(list(q_value_dict.keys()))
         else:  # select node with highest q
@@ -177,7 +174,7 @@ class RLAgent:
                                 self.Q(graph, model='target')[0].values())  # get next state Qvalue with target network
                         else:
                             nextstateQ = torch.zeros(1)
-                loss = self.loss_fn(q_value_dict[action], nextstateQ + nsteprewards + reward) / min(BATCH_SIZE,
+                loss = self.loss_fn(q_value_dict[action], nextstateQ + nsteprewards + reward) / min(self.BATCH_SIZE,
                                                                                                     len(self.memory))
                 loss.backward()
                 # revert graph to base state
@@ -200,4 +197,4 @@ class RLAgent:
                 # Take action, recieve reward
                 reward, done = graph.selectnode(node_to_add)
                 cumulative_reward += reward
-        return cumulative_reward, len(graph.solution)
+        return cumulative_reward, len(graph.solution), graph.solutionsize

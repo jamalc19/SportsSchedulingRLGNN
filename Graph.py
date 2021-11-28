@@ -87,7 +87,6 @@ class Graph:
         done=False
         if len(self.solution)==self.solutionsize:
             done=True
-            reward=1 #TODO Temporarily give reward for feasible solution
         if len(self.nodedict) < self.solutionsize:  # RL agent reached an infeasible solution
             done = True
             reward-= self.hardconstraintcost
@@ -215,10 +214,9 @@ class Graph:
 
 
     def addEdge(self, node1,node2,weight,hard=False,Complex=False, constraintid=None):
-        if (not hard) or Complex:#TODO remove this line. Temporary to test Qlearning
-            return
         #if edge already exists then increment cost. If complex then add complex id
         #else create new edge
+
         if node1.edges_hard.get(node2.id) is not None:
             # if a hard constraint already exists between these nodes then don't bother adding anything. Breaking this constraint already makes the problem infeasible
             #this will reduce size of graph and hopefully make edges more interpretable for struct2vec/RL algo
@@ -863,33 +861,39 @@ def creategraph(path, hardconstraintcost=10000):
         G.addphasedconstraints()
 
     #add GA1 constraints some of which are node eliminating
-    for GA1 in gameconstraints:
-        G.addGA1(GA1.attrib)
+    if gameconstraints:
+        for GA1 in gameconstraints:
+            G.addGA1(GA1.attrib)
 
     #add CA constraints. Some of CA1 and CA2 are node eliminating.
-    for C in capacityconstraints:
-        if C.tag=='CA1':
-            G.addCA1(C)
-        elif C.tag=='CA2':
-            G.addCA2(C)
-        elif C.tag=='CA3':
-            G.addCA3(C)
-        elif C.tag=='CA4':
-            G.addCA4(C)
+    if capacityconstraints:
+        for C in capacityconstraints:
+            if C.tag=='CA1':
+                G.addCA1(C)
+            elif C.tag=='CA2':
+                G.addCA2(C)
+            elif C.tag=='CA3':
+                G.addCA3(C)
+            elif C.tag=='CA4':
+                G.addCA4(C)
+
     #add break constraints
-    for B in breakconstraints:
-        if B.tag=='BR1':
-            G.addBR1( B.attrib)
-        elif B.tag=='BR2':
-            G.addBR2( B.attrib)
-        else:
-            print('unknown constraint',B)
+    if breakconstraints:
+        for B in breakconstraints:
+            if B.tag=='BR1':
+                G.addBR1( B.attrib)
+            elif B.tag=='BR2':
+                G.addBR2( B.attrib)
+            else:
+                print('unknown constraint',B)
     #add fairness constraints
-    for FA2 in fairnessconstraints:
-        G.addFA2(FA2.attrib)
+    if fairnessconstraints:
+        for FA2 in fairnessconstraints:
+            G.addFA2(FA2.attrib)
     #add separation constraints
-    for SE1 in separationconstraints:
-        G.addSE1(SE1.attrib)
+    if separationconstraints:
+        for SE1 in separationconstraints:
+            G.addSE1(SE1.attrib)
     for nodeid in G.forcedselections:
         G.selectnode(nodeid)
     return G
@@ -906,7 +910,7 @@ if __name__=='__main__':
     #     for node in g.nodedict.values():
     #         node.cost=0#TODO for hard constraint testing only
     for file in os.listdir('GenInstances/'):
-        g = creategraph('GenInstances/'+file)
+        g = creategraph('GenInstances/'+file, hardconstraintcost=10000)
         pickle.dump(g, open('PreprocessedInstances/' + file.replace('xml','pkl'),'wb'))
 
     #print(len(g.teams),len(g.nodedict), len(g.nodedict)/(2*len(g.teams)*(len(g.teams)-1)**2)) #max num of nodes is 2*n*(n-1)^2
