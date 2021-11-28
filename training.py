@@ -18,15 +18,20 @@ from s2v_scheduling import Model
 from RLAgent import RLAgent
 
 def main():
-    # Create agent
+
+    #Create agent
     agent = RLAgent(CACHE_SIZE=CACHE_SIZE,EMBEDDING_SIZE=EMBEDDING_SIZE,EPS_START=EPS_START,EPS_END=EPS_END,EPS_STEP=EPS_STEP,
                     GAMMA=GAMMA,N_STEP_LOOKAHEAD=N_STEP_LOOKAHEAD,BATCH_SIZE=BATCH_SIZE)
     if warmstart:
         agent.model.load_state_dict(torch.load(warmstart))
 
+    #Result output
+    output = open("TestResults/RLsolutions.csv", 'w')
+    output.write('episode,instance,feasible?,cumulative reward,solution length\n')
+
+    #Training loop
     np.random.seed(0)
     torch.manual_seed(0)
-    # Training loop
     t = 1
     Rollouts={}
     for e in range(EPISODES):
@@ -46,7 +51,7 @@ def main():
             agent.cache(i, graph.solution.copy(), node_to_add)
 
             # Take action, recieve reward
-            reward, done, feas = graph.selectnode(node_to_add)
+            reward, done, feasible = graph.selectnode(node_to_add)
 
             cumulative_reward += reward
 
@@ -61,6 +66,8 @@ def main():
             # Update state
             # state = next_state
         print(e, i, cumulative_reward, len(graph.solution), graph.solutionsize)
+        output.write('{e},{i},{f},{c},{s}\n'.format(e=e, i=i, f=feasible, c=cumulative_reward, s=len(graph.solution)))
+    output.close()
 
         if (t >= TRAINING_DELAY) and (e % SAVE_FREQUENCY == 0):
             torch.save(agent.model.state_dict(), 'ModelParams/{}{}'.format(RUN_NAME, e))
@@ -96,7 +103,8 @@ EMBEDDING_SIZE = 64
 CACHE_SIZE = 1000
 
 # Declare training instances
-instances= [inst for inst in os.listdir('PreprocessedInstances/') if 'NoComplexgen_instance' in inst]
+#instances= [inst for inst in os.listdir('PreprocessedInstances/') if 'NoComplexgen_instance' in inst]
+instances= [inst for inst in os.listdir('PreprocessedInstances/')]
 #instances = ['OnlyHardITC2021_Test1.pkl', 'OnlyHardITC2021_Test2.pkl', 'OnlyHardITC2021_Test3.pkl','OnlyHardITC2021_Test4.pkl']  # testing on just the small instances for now
 
 
