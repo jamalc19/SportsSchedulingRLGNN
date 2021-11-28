@@ -1,4 +1,5 @@
-instance,feasible?,cumulative reward,solution lengthgen_instance_0.pkl,True,-30,30
+instance,feasible?,cumulative reward,solution length
+gen_instance_0.pkl,True,-30,30
 gen_instance_1.pkl,False,-10020,10
 gen_instance_10.pkl,False,-10045,54
 gen_instance_11.pkl,True,-50,30

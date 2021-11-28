@@ -53,8 +53,8 @@ def solving():
 
     instances = [inst for inst in os.listdir('PreprocessedInstances/')]
 
-    output = open("TestResults/HeuristicSolutions.csv", 'a')
-    output.write('instance,feasible?,cumulative reward,solution length')
+    output = open("TestResults/HeuristicSolutions.csv", 'w')
+    output.write('instance,feasible?,cumulative reward,solution length\n')
     
     for instance in instances:
         graph = pickle.load(open('PreprocessedInstances/'+instance, 'rb'))
@@ -62,7 +62,7 @@ def solving():
         cumulative_reward = -graph.costconstant
         added_nodes = []
 
-        #Training
+        #solving
         while not done:
             node_to_add = agent.greedy_action(graph)
             
@@ -85,7 +85,7 @@ def testing():
         cumulative_reward = -graph.costconstant
         added_nodes = []
 
-        #Training
+        #solving
         while not done:
             node_to_add = agent.greedy_action(graph)
             
