@@ -7,6 +7,7 @@ max_teams = 8
 
 os.chdir("GenInstances/")
 
+
 def pop_random(rs, team_list):
     random.seed(rs)
     i = random.randrange(0, len(team_list))
@@ -365,6 +366,10 @@ def gen_instances(rs):
     for i in range(len(optimal_set)):
         optimal_set[i].set('match', str(schedule[i]))
 
+    structure = ET.SubElement(root, "Structure")
+    ft = ET.SubElement(structure, "Format", leagueIds=str(rs))
+    ET.SubElement(ft, "gameMode").text = "NP"
+
     resources = ET.SubElement(root, "Resources")
 
     leagues = ET.SubElement(resources, "Leagues")
@@ -434,7 +439,7 @@ def gen_instances(rs):
     tree.write("gen_instance_" + str(rs) + ".xml")
 
 
-for i in range(100):
-    gen_instances(i)
+for instances in range(100):
+    gen_instances(instances)
 
 
