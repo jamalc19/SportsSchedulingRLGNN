@@ -1,7 +1,10 @@
 from NodeAndEdge import Node,Edge
 import xml.etree.ElementTree as ET
 import os
+import numpy as np
+import pandas as pd
 import pickle
+
 
 def splitmeetings(meetings):
     return [[int(team) for team in m.split(',')] for m in meetings.split(';')[:-1]]
@@ -58,11 +61,7 @@ class Graph:
         reward = self.computereward(nodeid)
         node = self.nodedict[nodeid]
         node.selected = True
-        '''
-        if True: #TODO remove. temporary to test Q learning
-            self.solution.add(nodeid)
-            return reward, len(self.solution) == self.solutionsize
-        '''
+
         constraintids=set()
         for edge in node.edges_soft.keys(): #update non-complex soft constraints
             constraintids |= node.edges_soft[edge].constraintids
@@ -84,14 +83,7 @@ class Graph:
         for deletenodeid in set(node.edges_hard.keys()):  # delete all nodes connected to this one by a hard constraint
             self.deletenodebyid(deletenodeid)
         self.solution.add(nodeid)
-        done=False
-        if len(self.solution)==self.solutionsize:
-            done=True
-        if len(self.nodedict) < self.solutionsize:  # RL agent reached an infeasible solution
-            done = True
-            reward-= self.hardconstraintcost
-        reward = max(reward,-self.hardconstraintcost)
-        return reward, done
+        return reward, len(self.solution)==self.solutionsize
 
     def computereward(self,nodeid):
         node = self.nodedict[nodeid]
@@ -216,8 +208,6 @@ class Graph:
     def addEdge(self, node1,node2,weight,hard=False,Complex=False, constraintid=None):
         #if edge already exists then increment cost. If complex then add complex id
         #else create new edge
-        if Complex:
-            return
         if node1.edges_hard.get(node2.id) is not None:
             # if a hard constraint already exists between these nodes then don't bother adding anything. Breaking this constraint already makes the problem infeasible
             #this will reduce size of graph and hopefully make edges more interpretable for struct2vec/RL algo
@@ -397,7 +387,6 @@ class Graph:
         opponents = [int(o) for o in C.get('teams2').split(';')]
         mode = C.get('mode1')
         hard= C.get('type')=='HARD'
-        hard=False #TODO Remove this if using ITC instances
         if hard:
             penalty=self.hardconstraintcost
         slots= [int(s) for s in C.get('slots').split(';')]
@@ -717,7 +706,7 @@ class Graph:
         intp = int(C.get('intp'))
         slots = [int(s) for s in C.get('slots').split(';')]
         teams = [int(t) for t in C.get('teams').split(';')]
-        mode = C.get('mode2')
+        mode = C.get('mode1')
         penalty=int(C.get('penalty'))
         hard= C.get('type')=='HARD'
         if hard:
@@ -734,7 +723,6 @@ class Graph:
             else:
                 Complex=False
                 constraintid=None
-
             for opponent1 in self.teams:
                 if opponent1!=team:
                     for opponent2 in self.teams:
@@ -864,58 +852,92 @@ def creategraph(path, hardconstraintcost=10000):
         G.addphasedconstraints()
 
     #add GA1 constraints some of which are node eliminating
-    if gameconstraints:
-        for GA1 in gameconstraints:
-            G.addGA1(GA1.attrib)
+    for GA1 in gameconstraints:
+        G.addGA1(GA1.attrib)
 
     #add CA constraints. Some of CA1 and CA2 are node eliminating.
-    if capacityconstraints:
-        for C in capacityconstraints:
-            if C.tag=='CA1':
-                G.addCA1(C)
-            elif C.tag=='CA2':
-                G.addCA2(C)
-            elif C.tag=='CA3':
-                G.addCA3(C)
-            elif C.tag=='CA4':
-                G.addCA4(C)
-
+    for C in capacityconstraints:
+        if C.tag=='CA1':
+            G.addCA1(C)
+        elif C.tag=='CA2':
+            G.addCA2(C)
+        elif C.tag=='CA3':
+            G.addCA3(C)
+        elif C.tag=='CA4':
+            G.addCA4(C)
     #add break constraints
-    if breakconstraints:
-        for B in breakconstraints:
-            if B.tag=='BR1':
-                G.addBR1( B.attrib)
-            elif B.tag=='BR2':
-                G.addBR2( B.attrib)
-            else:
-                print('unknown constraint',B)
+    for B in breakconstraints:
+        if B.tag=='BR1':
+            G.addBR1( B.attrib)
+        elif B.tag=='BR2':
+            G.addBR2( B.attrib)
+        else:
+            print('unknown constraint',B)
     #add fairness constraints
-    if fairnessconstraints:
-        for FA2 in fairnessconstraints:
-            G.addFA2(FA2.attrib)
+    for FA2 in fairnessconstraints:
+        G.addFA2(FA2.attrib)
     #add separation constraints
-    if separationconstraints:
-        for SE1 in separationconstraints:
-            G.addSE1(SE1.attrib)
+    for SE1 in separationconstraints:
+        G.addSE1(SE1.attrib)
     for nodeid in G.forcedselections:
         G.selectnode(nodeid)
     return G
 
 
 if __name__=='__main__':
-    #to avoid max recursion error when saving pickle
-    import sys
-    max_rec = 0x100000
-    sys.setrecursionlimit(max_rec)
-    # files = ['ITC2021_Test1.xml','ITC2021_Test2.xml','ITC2021_Test3.xml','ITC2021_Test4.xml']
-    # for file in files:
-    #     g = creategraph('Instances/' + file,hardconstraintcost=1)
-    #     for node in g.nodedict.values():
-    #         node.cost=0#TODO for hard constraint testing only
-    for file in os.listdir('GenInstances/'):
-        g = creategraph('GenInstances/'+file, hardconstraintcost=10000)
-        pickle.dump(g, open('PreprocessedInstances/' +"NoComplex"+ file.replace('xml','pkl'),'wb'))
+    filelist = [file for file in os.listdir('Instances/')]
+    #graphs = [creategraph('Instances/' + file) for file in os.listdir('Instances/')]
+    #graph = creategraph('Instances/' + filelist[2])
+    #print(graph)
 
-    #print(len(g.teams),len(g.nodedict), len(g.nodedict)/(2*len(g.teams)*(len(g.teams)-1)**2)) #max num of nodes is 2*n*(n-1)^2
+    num_teams = []
+    timeslot = []
+    solutionsize = []
+    num_node = []
+    num_constraints_edges = []
+    num_hard = []
+    num_soft = []
+    num_forced = []
+    names = []
+    for i in range(len(filelist)):
+    #for i in range(3):
+        graph = creategraph('Instances/' + filelist[i])
 
-    
+        num_teams.append(len(graph.teams))
+        timeslot.append(len(graph.slots))
+        solutionsize.append(graph.solutionsize)
+
+        num_node.append(len(graph.nodedict))
+        hard_edge = 0
+        soft_edge = 0
+        for node in graph.nodedict:
+            #print(node)
+            hard_edge += len(graph.nodedict[node].edges_hard) + len(graph.nodedict[node].edges_hard_complex)
+            soft_edge += len(graph.nodedict[node].edges_soft) + len(graph.nodedict[node].edges_soft_complex)
+
+        soft_tot = np.round(soft_edge / 2)
+        hard_tot = np.round(hard_edge / 2)
+
+        num_constraints_edges.append(soft_tot + hard_tot)
+        num_hard.append(hard_tot)
+        num_soft.append(soft_tot)
+        num_forced.append(len(graph.forcedselections))
+
+        names.append(filelist[i])
+
+        print(i)
+    df = pd.DataFrame({'Instance Name': names,
+                       'Number of Teams': num_teams,
+                       'Number of Slots': timeslot,
+                       'Solution Size': solutionsize,
+                       'Nodes': num_node,
+                       'Total Constraint Edges': num_constraints_edges,
+                       'Hard Constraint Edges': num_hard,
+                       'Soft Constraint Edges': num_soft,
+                       'Forced Selections': num_forced})
+
+    df.to_csv('GraphSummary.csv')
+    #df = pd.DataFrame({'Instance Name': names})
+    #df.to_csv('Names.csv')
+
+

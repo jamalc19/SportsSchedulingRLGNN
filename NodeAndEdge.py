@@ -13,28 +13,34 @@ class Node:
         self.edges_hard_complex={} #edges that approximately represent hard constraints that relate more than 2 games
 
     def delete(self):
-        for edge in self.edges_soft:
-            edge.delete()
-        for edge in self.edges_hard:
-            edge.delete()
-        for edge in self.edges_soft_complex:
-            edge.delete()
-        for edge in self.edges_hard_complex:
-            edge.delete()
-        #have to remove from nodedict as well
+        for edge in set(self.edges_soft.keys()):
+            self.edges_soft[edge].delete()
+        for edge in set(self.edges_hard.keys()):
+            self.edges_hard[edge].delete()
+        for edge in set(self.edges_soft_complex.keys()):
+            self.edges_soft_complex[edge].delete()
+        for edge in set(self.edges_hard_complex.keys()):
+            self.edges_hard_complex[edge].delete()
 
     def addcost(self,cost):
         self.cost+=cost
 
+
+
 class Edge:
-    def __init__(self,node1,node2,weight,hard=False,Complex=False, complexid=None):
+    def __init__(self,node1,node2,weight,hard=False,Complex=False, constraintid=None):
         #node1.idnum < node2.idnum
+        if node1==node2:
+            print('ERROR: self directed edge')
         self.node1=node1
         self.node2=node2
         self.weight=weight
         self.hard=hard
         self.complex = Complex
-        self.complexid=complexid
+        #only constraints that require updating throughout the solving process require an id
+        self.constraintids=set()
+        if constraintid is not None:
+            self.constraintids.add(constraintid)
         if self.hard:
             if self.complex:
                 self.node1.edges_hard_complex[self.node2.id]=self
@@ -49,6 +55,19 @@ class Edge:
             else:
                 self.node1.edges_soft[self.node2.id]=self
                 self.node2.edges_soft[self.node1.id]=self
+
+    def __hash__(self):
+        return (self.node1.id, self.node2.id,self.hard,self.complex).__hash__()
+
+    def addweight(self,weight):
+        self.weight+=weight
+
+    def deleteconstraint(self, C_id, weight):
+        self.constraintids.discard(C_id)
+        if len(self.constraintids) == 0:
+            self.delete()
+        else:
+            self.addweight(-weight)
 
     def delete(self):
         if self.hard:
