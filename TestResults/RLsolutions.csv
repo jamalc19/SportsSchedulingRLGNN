@@ -1,7 +1,0 @@
-episode,instance,feasible?,cumulative reward,solution length
-0,gen_instance_49.pkl,False,-10010,4
-1,gen_instance_51.pkl,False,-10010,5
-2,gen_instance_67.pkl,False,-10010,7
-3,gen_instance_7.pkl,False,-10030,17
-4,gen_instance_7.pkl,False,-10030,21
-5,OnlyHardITC2021_Test4.pkl,False,-1,12
