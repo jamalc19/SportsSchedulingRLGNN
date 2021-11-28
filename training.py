@@ -73,8 +73,6 @@ class Agent:
             actionID: the nodeID of the selected node
             action: the embedding for the corresponding nodeID
         """
-
-
         #eps-greedy action
         EPS = EPS_END + (EPS_START - EPS_END) * math.exp(-1. * t / EPS_DECAY)
         if random.random() <= EPS: #select random node to add
@@ -149,12 +147,15 @@ class Agent:
         batch = self.recall()
         self.optimizer.zero_grad()
         for instance in batch: #TODO this only works if graphs aren't dynamically changing besides the selected nodes being marked
-            graph = pickle.load(open('PreprocessedInstances/' + instance, 'rb'))
+            '''
+            graph = pickle.load(open('PreprocessedInstances/' + instance, 'rb'))#save for if we do use the dynamically changing graphs
+            '''
             for partial_solution, action in batch[instance]:
+                graph = pickle.load(open('PreprocessedInstances/' + instance,'rb'))  # save for if we do use the dynamically changing graphs
                 # get to current state
                 for node_id in partial_solution:
-                    graph.nodedict[node_id].selected=True
-                    #graph.selectnode(node_id) #save for if we do use the dynamically changing graphs
+                    #graph.nodedict[node_id].selected=True #save for if we use static graphs
+                    graph.selectnode(node_id) #save for if we do use the dynamically changing graphs
                 #forward pass through the network
                 q_value_dict, graph_embeddings = self.Q(graph)
                 #get next state and reward
@@ -163,8 +164,6 @@ class Agent:
                 nsteprewards = 0
                 if done:
                     nextstateQ = torch.zeros(1)
-                elif len(graph.nodedict) + len(graph.solution) < graph.solutionsize:  # RL agent reached an infeasible solution
-                    nextstateQ = torch.tensor(-1.0)
                 else:
                     with torch.no_grad():
                         for i in range(N_STEP_LOOKAHEAD):
@@ -172,17 +171,19 @@ class Agent:
                                 nstep_q_value_dict, nstep_graph_embeddings=self.Q(graph, model='target')
                                 node_to_add = self.greedy(nstep_q_value_dict)
                                 reward, done = graph.selectnode(node_to_add)
-                                nsteprewards+=reward
-                                if len(graph.nodedict) < graph.solutionsize:  # RL agent reached an infeasible solution
-                                    print('infeasible')
-                                    done = True
-                        nextstateQ = max(self.Q(graph, model='target')[0].values())  # get next state Qvalue with target network
+                                nsteprewards+=GAMMA**i*reward
+                        if not done:
+                            nextstateQ = GAMMA**(i+1)*max(self.Q(graph, model='target')[0].values())  # get next state Qvalue with target network
+                        else:
+                            nextstateQ = torch.zeros(1)
                 loss = self.loss_fn(q_value_dict[action], nextstateQ +nsteprewards+ reward)/min(BATCH_SIZE,len(self.memory))
                 loss.backward()
                 #revert graph to base state
+                '''Save for if using dynamically changing graph
                 for node_id in graph.solution:
                     graph.nodedict[node_id].selected = False
                 graph.solution=set()
+                '''
         self.optimizer.step()
 
     def rollout(self, i):
@@ -197,10 +198,7 @@ class Agent:
                 # Take action, recieve reward
                 reward, done = graph.selectnode(node_to_add)
                 cumulative_reward += reward
-                if len(graph.nodedict) < graph.solutionsize:  # RL agent reached an infeasible solution
-                    print('infeasible')
-                    done = True
-        return cumulative_reward
+        return cumulative_reward, len(graph.solution)
 
 def main():
     #Create agent
@@ -229,6 +227,7 @@ def main():
 
             #Take action, recieve reward
             reward, done = graph.selectnode(node_to_add)
+
             cumulative_reward+=reward
 
             #Train
@@ -239,23 +238,17 @@ def main():
                     agent.target_model.load_state_dict(agent.model.state_dict())
             t += 1
 
-
-
-            if len(graph.nodedict) < graph.solutionsize:  # RL agent reached an infeasible solution
-                print('infeasible')
-                done=True
-
             #Update state
             #state = next_state
-        print(e,i,cumulative_reward)
+        print(e,i,cumulative_reward, len(graph.solution))
 
         if (t >= TRAINING_DELAY) and (e% SAVE_FREQUENCY ==0):
             torch.save(agent.model.state_dict(), 'ModelParams/{}{}'.format(RUN_NAME,e))
 
-        if (t >= TRAINING_DELAY) and (e%ROLLOUT_FREQUENCY==0):#rollout
+        if (e%ROLLOUT_FREQUENCY==0):#rollout
             for i in instances:
-                cumulative_reward=agent.rollout(i)
-                print('Rollout Cumulative Reward for {}: {}'.format(i,cumulative_reward))
+                cumulative_reward,solutionlength=agent.rollout(i)
+                print('Rollout Cumulative Reward for {}: {}, Partial Solution Length: {}'.format(i,cumulative_reward,solutionlength))
 
 #*********************************************************************
 # INITIALIZE
@@ -263,17 +256,18 @@ def main():
 
 #Training params
 EPS_START = 0.1
-EPS_END = 0.001
+EPS_END = 0.075
 EPS_DECAY = 1000
 TRAINING_DELAY = 100
 EPISODES = 1000000
-BATCH_SIZE = 32
-N_STEP_LOOKAHEAD=10
+BATCH_SIZE = 64
+N_STEP_LOOKAHEAD=5
 TARGET_UPDATE = 10
 OPTIMIZE_FREQUENCY=10
+GAMMA= 0.9
 
 #Agent params
-EMBEDDING_SIZE = 64
+EMBEDDING_SIZE = 128
 CACHE_SIZE = 1000
 
 
@@ -289,8 +283,8 @@ print(f"Using CUDA: {use_cuda}")
 #TRAINING
 #***********************************************************************
 warmstart=False
-warmstart = 'ModelParams/s2visactuallytraining200'
-RUN_NAME = 'BatchTrainingFirstAttempt'
+warmstart = 'ModelParams/128EmbeddingSize10'
+RUN_NAME = '128EmbeddingSize'
 ROLLOUT_FREQUENCY =10
 SAVE_FREQUENCY = 10
 if __name__=='__main__':
