@@ -10,6 +10,7 @@ import torch.nn as nn
 from collections import namedtuple, deque
 from Graph import Graph
 from s2v_scheduling import Model
+import csv
 
 from RLAgent import RLAgent
 
@@ -41,8 +42,9 @@ def main():
     param_output.writelines(param_output_list)
     param_output.close()
 
-    training_output = open("TestResults/{name}.csv".format(name=RUN_NAME), 'w')
-    training_output.write('episode,instance,feasible?,cumulative reward,solution length\n')
+    training_output = open("TestResults/{name}.csv".format(name=RUN_NAME), 'w',newline='')
+    training_output_writer=csv.writer(training_output)
+    training_output_writer.writerow(['episode','instance','feasible?','cumulative reward','solution length'])
 
     #Create agent
     agent = RLAgent(CACHE_SIZE=CACHE_SIZE,EMBEDDING_SIZE=EMBEDDING_SIZE,EPS_START=EPS_START,EPS_END=EPS_END,EPS_STEP=EPS_STEP,
@@ -72,7 +74,7 @@ def main():
             agent.cache(i, graph.solution.copy(), node_to_add)
 
             # Take action, recieve reward
-            reward, done, feasible = graph.selectnode(node_to_add)
+            reward, done = graph.selectnode(node_to_add)
 
             cumulative_reward += reward
 
@@ -83,9 +85,9 @@ def main():
                 if t % TARGET_UPDATE == 0:
                     agent.target_model.load_state_dict(agent.model.state_dict())
             t += 1
-
+        feasible = len(graph.solution)== graph.solutionsize
         print(e, i, feasible, cumulative_reward, len(graph.solution), graph.solutionsize)
-        training_output.write('{e},{i},{f},{c},{s},{gs}\n'.format(e=e, i=i, f=feasible, c=cumulative_reward, s=len(graph.solution), gs = graph.solutionsize))
+        training_output_writer.writerow([e, i,feasible,cumulative_reward, len(graph.solution), graph.solutionsize])
 
         if (t >= TRAINING_DELAY) and (e % SAVE_FREQUENCY == 0):
             torch.save(agent.model.state_dict(), 'ModelParams/{}{}'.format(RUN_NAME, e))
@@ -105,7 +107,7 @@ def main():
 # INITIALIZE
 # *********************************************************************
 
-RUN_NAME = '1-hop-lookahead-only'
+RUN_NAME = 'Debug'
 
 # Agent params
 CACHE_SIZE = 1000

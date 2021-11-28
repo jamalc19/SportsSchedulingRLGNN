@@ -157,7 +157,7 @@ class RLAgent:
                 # forward pass through the network
                 q_value_dict, graph_embeddings = self.Q(graph)
                 # get next state and reward
-                reward, done, feas = graph.selectnode(action)
+                reward, done = graph.selectnode(action)
                 # compute Q value of next state
                 nsteprewards = 0
                 if done:
@@ -168,7 +168,7 @@ class RLAgent:
                             if not done:
                                 nstep_q_value_dict, nstep_graph_embeddings = self.Q(graph, model='target')
                                 node_to_add = self.greedy(nstep_q_value_dict)
-                                reward, done, feas = graph.selectnode(node_to_add)
+                                reward, done = graph.selectnode(node_to_add)
                                 nsteprewards += self.GAMMA ** i * reward
                         if not done:
                             nextstateQ = self.GAMMA ** (i + 1) * max(
@@ -196,6 +196,6 @@ class RLAgent:
                 q_value_dict, graph_embeddings = self.Q(graph)
                 node_to_add = self.greedy(q_value_dict)
                 # Take action, recieve reward
-                reward, done, feas = graph.selectnode(node_to_add)
+                reward, done = graph.selectnode(node_to_add)
                 cumulative_reward += reward
         return cumulative_reward, len(graph.solution), graph.solutionsize
