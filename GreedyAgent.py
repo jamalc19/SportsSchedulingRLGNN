@@ -53,7 +53,7 @@ def solving():
     instances = [inst for inst in os.listdir('PreprocessedInstances/')]
 
     output = open("TestResults/HeuristicSolutions.csv", 'w')
-    output.write('instance,feasible?,cumulative reward,solution length\n')
+    output.write('instance,feasible?,cumulative reward,nodes added,solution size\n')
     
     for instance in instances:
         graph = pickle.load(open('PreprocessedInstances/'+instance, 'rb'))
@@ -66,11 +66,10 @@ def solving():
             node_to_add = agent.greedy_action(graph)
             
             reward, done, feasible = graph.selectnode(node_to_add)
-            cumulative_reward+=reward
-            #print("added node: {n}, reward was {r}, cumulative reward is {c}, solution size is {s}, done is {d}".format(n=node_to_add, r=reward, c=cumulative_reward, s=len(added_nodes), d=done))
+            cumulative_reward+=reward    
             added_nodes.append(node_to_add)    
-        #print('{i} solution {f} \t\t cumulative reward was {c} \t\t solution size was {s}'.format(i=instance, f=feasible, c=cumulative_reward, s=len(graph.solution)))
-        output.write('{i},{f},{c},{s}\n'.format(i=instance, f=feasible, c=cumulative_reward, s=len(graph.solution)))
+        
+        output.write('{i},{f},{c},{s},{gf}\n'.format(i=instance, f=feasible, c=cumulative_reward, s=len(graph.solution), gf=graph.solutionsize))
     output.close()
 
 def testing():
