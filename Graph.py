@@ -891,15 +891,15 @@ if __name__=='__main__':
     import sys
     max_rec = 0x100000
     sys.setrecursionlimit(max_rec)
-    files = ['ITC2021_Test1.xml','ITC2021_Test2.xml','ITC2021_Test3.xml','ITC2021_Test4.xml']
-    for file in files:
-        g = creategraph('Instances/' + file,hardconstraintcost=1)
-        for node in g.nodedict.values():
-            node.cost=0#TODO for hard constraint testing only
-        pickle.dump(g, open('PreprocessedInstances/OnlyHard'+file.replace('xml','pkl'),'wb'))
-    '''
-    for file in os.listdir('Instances/'):
-        g= creategraph('Instances/'+file)
-        print(len(g.teams),len(g.nodedict), len(g.nodedict)/(2*len(g.teams)*(len(g.teams)-1)**2)) #max num of nodes is 2*n*(n-1)^2
-    '''
+    # files = ['ITC2021_Test1.xml','ITC2021_Test2.xml','ITC2021_Test3.xml','ITC2021_Test4.xml']
+    # for file in files:
+    #     g = creategraph('Instances/' + file,hardconstraintcost=1)
+    #     for node in g.nodedict.values():
+    #         node.cost=0#TODO for hard constraint testing only
+    for file in os.listdir('GenInstances/'):
+        g = creategraph('GenInstances/'+file)
+        pickle.dump(g, open('PreprocessedInstances/' + file.replace('xml','pkl'),'wb'))
 
+    #print(len(g.teams),len(g.nodedict), len(g.nodedict)/(2*len(g.teams)*(len(g.teams)-1)**2)) #max num of nodes is 2*n*(n-1)^2
+
+    
