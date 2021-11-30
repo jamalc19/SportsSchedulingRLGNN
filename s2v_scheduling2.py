@@ -35,7 +35,7 @@ def dclamp(input, min, max):
 
 torch.manual_seed(0)
 class Model(nn.Module):
-    def __init__(self, p_dim,epsilon=0.01):
+    def __init__(self, p_dim,epsilon=0.0):
         self.p_dim = p_dim
         super(Model, self).__init__()
         self.theta1 = nn.Linear(p_dim, p_dim, bias=False) #non-complex
