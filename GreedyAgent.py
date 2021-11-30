@@ -65,7 +65,7 @@ def solving():
         while not done:
             node_to_add = agent.greedy_action(graph)
             
-            reward, done, feasible = graph.selectnode(node_to_add)
+            reward, done = graph.selectnode(node_to_add)
             cumulative_reward+=reward    
             added_nodes.append(node_to_add)    
         
@@ -87,7 +87,7 @@ def testing():
         while not done:
             node_to_add = agent.greedy_action(graph)
             
-            reward, done, feas= graph.selectnode(node_to_add)
+            reward, done= graph.selectnode(node_to_add)
             cumulative_reward+=reward
             #print("added node: {n}, reward was {r}, cumulative reward is {c}, solution size is {s}, done is {d}".format(n=node_to_add, r=reward, c=cumulative_reward, s=len(added_nodes), d=done))
             added_nodes.append(node_to_add)    
