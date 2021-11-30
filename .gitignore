@@ -1,7 +1,10 @@
 *.ipynb
 .ipynb_checkpoints/
 .idea
+.idea/*
 *.vscode
 __pycache__/
 PreprocessedInstances/
 ModelParams/
+Results/
+TestResults
