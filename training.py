@@ -94,7 +94,7 @@ def main():
 
         if (t >= TRAINING_DELAY) and (e % ROLLOUT_FREQUENCY == 0):  # rollout
             Rollouts[e]={}
-            for i in instances:
+            for i in testinstances:
                 cumulative_reward, solutionlength, fullsolutionsize = agent.rollout(i)
                 print('Rollout Cumulative Reward for {}: {}, Partial Solution Length: {}, Target Solution Size: {}'.format(i, cumulative_reward,
                                                                                                  solutionlength,fullsolutionsize))
@@ -131,6 +131,7 @@ SAVE_FREQUENCY = 10
 # Declare training instances
 INSTANCE_SUMMARY = 'Preproccessed synthetic instances with no complex constraints'
 instances= [inst for inst in os.listdir('PreprocessedInstances/') if 'NoComplexgen_instance' in inst]
+testinstances = []#@todo BINGFILLIN
 #instances= [inst for inst in os.listdir('PreprocessedInstances/')]
 #instances = ['OnlyHardITC2021_Test1.pkl', 'OnlyHardITC2021_Test2.pkl', 'OnlyHardITC2021_Test3.pkl','OnlyHardITC2021_Test4.pkl']  # testing on just the small instances for now
 
