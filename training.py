@@ -64,7 +64,7 @@ def main():
         cumulative_reward = -graph.costconstant
         # Training
         while not done:
-            currentslot = len(graph.solution)//int(len(graph.teams)/2)
+            currentslot = len(graph.solution)//int(len(graph.teams)/2) #only works if no forced selections on graph creation. For our instances this is true
             # Determine which action to take
             if RESTRICTED_ACTION_SPACE:
                 q_value_dict, graph_embeddings = agent.Q(graph, slot=currentslot)

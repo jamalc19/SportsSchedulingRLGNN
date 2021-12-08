@@ -185,6 +185,9 @@ class RLAgent:
                                 node_to_add = self.greedy(nstep_q_value_dict)
                                 reward, done = graph.selectnode(node_to_add)
                                 nsteprewards += self.GAMMA ** i * reward
+                                if restricted_action_space:
+                                    if len(graph.getActions(len(graph.solution) // int(len(graph.teams) / 2))) == 0:
+                                        done = True  # infeasible
                         if not done:
                             if restricted_action_space:
                                 nextstateQ = self.GAMMA ** (i + 1) * max(
@@ -221,4 +224,7 @@ class RLAgent:
                 # Take action, recieve reward
                 reward, done = graph.selectnode(node_to_add)
                 cumulative_reward += reward
+                if restricted_action_space:
+                    if len(graph.getActions(len(graph.solution) // int(len(graph.teams) / 2))) == 0:
+                        done = True  # infeasible
         return cumulative_reward, len(graph.solution), graph.solutionsize
