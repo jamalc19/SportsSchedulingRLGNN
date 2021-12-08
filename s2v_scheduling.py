@@ -54,23 +54,26 @@ class Model(nn.Module):
                 edge_to = node1
             else:
                 edge_to = node2
-
-            mu_N.append(mu_all[self.node_id_to_tensor_index[edge_to]].unsqueeze(0))
+            if edge_to in self.node_id_to_tensor_index:
+                mu_N.append(mu_all[self.node_id_to_tensor_index[edge_to]].unsqueeze(0))
             weights.append(nd_edges[edge].weight)
 
         return mu_N, weights
 
 
-    def structure2vec(self, graph, t=4):  # t is iterations which is rec'd as 4
-        node_num = len(graph.nodedict)
-        self.node_id_to_tensor_index = {node:i for i,node in enumerate(graph.nodedict)}
+    def structure2vec(self, graph, t=4,nodesubset=None):  # t is iterations which is rec'd as 4
+        if not nodesubset:
+            nodesubset= graph.nodedict
+
+        node_num = len(nodesubset)
+        self.node_id_to_tensor_index = {node:i for i,node in enumerate(nodesubset)}
 
 
         mu_all = torch.zeros(node_num, self.p_dim)
         #x_all = []
 
         for _ in range(t):
-            for node in graph.nodedict:
+            for node in nodesubset:
                 mu_N = []
                 h = []
                 hc = []
@@ -106,7 +109,7 @@ class Model(nn.Module):
                 mu_all[self.node_id_to_tensor_index[node]] = self.forward(xi, mu_N, h, hc, s, sc)
                 #x_all.append(xi)
 
-            return dict(zip(graph.nodedict.keys(), mu_all))
+            return dict(zip(nodesubset, mu_all))
 
 
     def q_calc(self,embedding_dict, node_num):

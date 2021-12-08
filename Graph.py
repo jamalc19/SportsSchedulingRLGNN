@@ -103,8 +103,13 @@ class Graph:
             cost+=node.edges_hard[nodeid2].weight
         return -cost
 
-    def getActions(self):
-        return self.nodedict.keys() - self.solution
+    def getActions(self,slot=None):
+        if slot is not None:
+            #restricted action space to this slot only
+            temp = len(self.teams)*(len(self.teams)-1)
+            return {node for node in range(slot*temp,(slot+1)*temp) if node in self.nodedict} - self.solution
+        else:
+            return self.nodedict.keys() - self.solution
 
     def updateconstraints(self,C_id, nodeid):
         #nodeid has been selected
@@ -912,10 +917,9 @@ if __name__=='__main__':
     #     g = creategraph('Instances/' + file,hardconstraintcost=1)
     #     for node in g.nodedict.values():
     #         node.cost=0#TODO for hard constraint testing only
-    for file in os.listdir('GenInstances/'):
-        g = creategraph('GenInstances/'+file, hardconstraintcost=10000)
-        pickle.dump(g, open('PreprocessedInstances/' +"NoComplex"+ file.replace('xml','pkl'),'wb'))
+    for file in os.listdir('TestInstances4TeamsXML/'):
+        g = creategraph('TestInstances4TeamsXML/'+file, hardconstraintcost=10000)
+        pickle.dump(g, open('TestInstances4teams/' +"NoComplex"+ file.replace('xml','pkl'),'wb'))
 
     #print(len(g.teams),len(g.nodedict), len(g.nodedict)/(2*len(g.teams)*(len(g.teams)-1)**2)) #max num of nodes is 2*n*(n-1)^2
 
-    
