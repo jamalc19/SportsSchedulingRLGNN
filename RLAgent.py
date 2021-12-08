@@ -169,12 +169,9 @@ class RLAgent:
                 else:
                     q_value_dict, graph_embeddings = self.Q(graph)
                 # get next state and reward
-                reward, done = graph.selectnode(action)
+                reward, done = graph.selectnode(action,restricted_action_space)
                 # compute Q value of next state
                 nsteprewards = 0
-                if restricted_action_space:
-                    if len(graph.getActions(len(graph.solution) // int(len(graph.teams) / 2))) == 0:
-                        done = True  # infeasible
                 if done:
                     nextstateQ = torch.zeros(1)
                 else:
@@ -186,11 +183,8 @@ class RLAgent:
                                 else:
                                     nstep_q_value_dict, nstep_graph_embeddings = self.Q(graph, model='target')
                                 node_to_add = self.greedy(nstep_q_value_dict)
-                                reward, done = graph.selectnode(node_to_add)
+                                reward, done = graph.selectnode(node_to_add,restricted_action_space)
                                 nsteprewards += self.GAMMA ** i * reward
-                                if restricted_action_space:
-                                    if len(graph.getActions(len(graph.solution) // int(len(graph.teams) / 2))) == 0:
-                                        done = True  # infeasible
                         if not done:
                             if restricted_action_space:
                                 nextstateQ = self.GAMMA ** (i + 1) * max(
@@ -225,9 +219,6 @@ class RLAgent:
                     q_value_dict, graph_embeddings = self.Q(graph)
                 node_to_add = self.greedy(q_value_dict)
                 # Take action, recieve reward
-                reward, done = graph.selectnode(node_to_add)
+                reward, done = graph.selectnode(node_to_add,restricted_action_space)
                 cumulative_reward += reward
-                if restricted_action_space:
-                    if len(graph.getActions(len(graph.solution) // int(len(graph.teams) / 2))) == 0:
-                        done = True  # infeasible
         return cumulative_reward, len(graph.solution), graph.solutionsize

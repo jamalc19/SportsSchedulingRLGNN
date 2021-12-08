@@ -77,12 +77,9 @@ def main():
             agent.cache(i, graph.solution.copy(), node_to_add)
 
             # Take action, recieve reward
-            reward, done = graph.selectnode(node_to_add)
+            reward, done = graph.selectnode(node_to_add,RESTRICTED_ACTION_SPACE)
 
             cumulative_reward += reward
-            if RESTRICTED_ACTION_SPACE:
-                if len(graph.getActions(len(graph.solution)//int(len(graph.teams)/2)))==0:
-                    done=True#infeasible
 
             # Train
             if t >= TRAINING_DELAY:

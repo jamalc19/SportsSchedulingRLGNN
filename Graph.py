@@ -54,7 +54,7 @@ class Graph:
         #ToDo select any nodes this forces. Example only one game left for a team in a slot. Or only one slot left for a matchup. To do this have to store sets for each of these and if set is singleton then it is forced
             #alternatively the RL model should pick this up. If RL is sequential then maybe this could be helpful
 
-    def selectnode(self,nodeid):
+    def selectnode(self,nodeid, restricted_action_space=False):
         reward = self.computereward(nodeid)
         node = self.nodedict[nodeid]
         node.selected = True
@@ -88,6 +88,9 @@ class Graph:
         if len(self.solution)==self.solutionsize:
             done=True
         if len(self.nodedict) < self.solutionsize:  # RL agent reached an infeasible solution
+            done = True
+            reward-= self.hardconstraintcost
+        if restricted_action_space and (len(self.getActions(len(self.solution)//int(len(self.teams)/2)))==0):
             done = True
             reward-= self.hardconstraintcost
         reward = max(reward,-self.hardconstraintcost)
