@@ -87,10 +87,10 @@ class Graph:
         done=False
         if len(self.solution)==self.solutionsize:
             done=True
-        if len(self.nodedict) < self.solutionsize:  # RL agent reached an infeasible solution
+        elif restricted_action_space and (len(self.getActions(len(self.solution)//int(len(self.teams)/2)))==0):
             done = True
             reward-= self.hardconstraintcost
-        if restricted_action_space and (len(self.getActions(len(self.solution)//int(len(self.teams)/2)))==0):
+        if len(self.nodedict) < self.solutionsize:  # RL agent reached an infeasible solution
             done = True
             reward-= self.hardconstraintcost
         reward = max(reward,-self.hardconstraintcost)
