@@ -172,6 +172,9 @@ class RLAgent:
                 reward, done = graph.selectnode(action)
                 # compute Q value of next state
                 nsteprewards = 0
+                if restricted_action_space:
+                    if len(graph.getActions(len(graph.solution) // int(len(graph.teams) / 2))) == 0:
+                        done = True  # infeasible
                 if done:
                     nextstateQ = torch.zeros(1)
                 else:

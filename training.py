@@ -73,7 +73,6 @@ def main():
             # node_to_add= agent.greedy(q_value_dict) #node_to_add is the selected nodeid, action is the nodes s2v embedding
             node_to_add = agent.greedyepsilon(q_value_dict,
                                               t)  # node_to_add is the selected nodeid, action is the nodes s2v embedding
-            print(graph.nodedict[node_to_add].slot)
             # Cache state and action
             agent.cache(i, graph.solution.copy(), node_to_add)
 
