@@ -108,8 +108,11 @@ class Model(nn.Module):
 
                 mu_all[self.node_id_to_tensor_index[node]] = self.forward(xi, mu_N, h, hc, s, sc)
                 #x_all.append(xi)
-
-            return dict(zip(nodesubset, mu_all))
+        embeddings = dict(zip(nodesubset, mu_all))
+        q_value_dict={}
+        for nodeID in nodesubset:
+            q_value_dict[nodeID] = self.q_calc(embeddings, nodeID)
+        return q_value_dict
 
 
     def q_calc(self,embedding_dict, node_num):

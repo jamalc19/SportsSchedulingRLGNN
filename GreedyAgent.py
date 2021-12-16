@@ -14,7 +14,7 @@ class GreedyAgent:
     def __init__(self):
         pass
 
-    def greedy_action(self, graph: Graph):
+    def greedy_action(self, graph: Graph,restricted_action_space=None):
         """
         :param graph: a graph representation of current state
         :param current_nodeID: the ID# of the most recent node added to the solution

@@ -15,6 +15,10 @@ from collections import namedtuple, deque
 from Graph import Graph
 from s2v_scheduling import Model
 
+from s2v_schedulingNew import Model as NewModel
+
+from GreedyAgent import GreedyAgent
+
 
 class RLAgent:
     """
@@ -27,7 +31,7 @@ class RLAgent:
         optimizer:
     """
 
-    def __init__(self,CACHE_SIZE=1000,EMBEDDING_SIZE=64,EPS_START=1.0,EPS_END=0.05,EPS_STEP=10000,GAMMA=0.9,N_STEP_LOOKAHEAD=5, S2V_T=4, BATCH_SIZE=64):
+    def __init__(self,CACHE_SIZE=1000,EMBEDDING_SIZE=64,EPS_START=1.0,EPS_END=0.05,EPS_STEP=10000,GAMMA=0.9,N_STEP_LOOKAHEAD=5, S2V_T=4, BATCH_SIZE=64, S2V='Original', IMITATION_LEARNING_EPISODES=50):
         super().__init__()
         self.EPS_START=EPS_START
         self.EPS_END=EPS_END
@@ -37,10 +41,15 @@ class RLAgent:
         self.GAMMA=GAMMA
         self.BATCH_SIZE=BATCH_SIZE
         self.memory = deque(maxlen=CACHE_SIZE)
-        self.model = Model(EMBEDDING_SIZE)
-        self.target_model = Model(EMBEDDING_SIZE)
+        if S2V=='Original':
+            self.model = Model(EMBEDDING_SIZE)
+            self.target_model = Model(EMBEDDING_SIZE)
+        else:
+            self.model = NewModel(EMBEDDING_SIZE)
+            self.target_model = NewModel(EMBEDDING_SIZE)
         self.target_model.load_state_dict(self.model.state_dict())
-
+        self.IMITATION_LEARNING_EPISODES = IMITATION_LEARNING_EPISODES
+        self.target_model_heuristic = GreedyAgent()
 
         self.optimizer = optim.RMSprop(self.model.parameters())
         self.loss_fn = nn.SmoothL1Loss()
@@ -56,15 +65,13 @@ class RLAgent:
         network = self.model if model == 'model' else self.target_model
         if slot is not None:
             actionnodeids = graph.getActions(slot)
-            graph_embeddings = network.structure2vec(graph, self.S2V_T,nodesubset=actionnodeids)
+            q_value_dict = network.structure2vec(graph, self.S2V_T,nodesubset=actionnodeids)
         else:
             actionnodeids = graph.getActions()
-            graph_embeddings = network.structure2vec(graph, self.S2V_T)
+            q_value_dict = network.structure2vec(graph, self.S2V_T,nodesubset=actionnodeids)
 
-        q_value_dict = {}
-        for nodeID in actionnodeids:
-            q_value_dict[nodeID] = network.q_calc(graph_embeddings, nodeID)
-        return q_value_dict, graph_embeddings
+        return q_value_dict
+
 
     def greedyepsilon(self, q_value_dict, t):
         """
@@ -99,8 +106,11 @@ class RLAgent:
         """
         return max(q_value_dict, key=q_value_dict.get)
 
-    def greedy_action(self, graph):
-        q_value_dict,_ = self.Q(graph)
+    def greedy_action(self, graph, restricted_action_space=False):
+        if restricted_action_space:
+            q_value_dict = self.Q(graph, slot = len(graph.solution) // int(len(graph.teams) / 2))
+        else:
+            q_value_dict = self.Q(graph)
         return max(q_value_dict, key=q_value_dict.get)
 
     def cache(self, instance, partialsolution, action):
@@ -149,7 +159,7 @@ class RLAgent:
         return
         # return loss.item()
 
-    def batch_train(self, restricted_action_space):
+    def batch_train(self, episode, restricted_action_space):
         batch = self.recall()
         self.optimizer.zero_grad()
         for instance in batch:  # TODO this only works if graphs aren't dynamically changing besides the selected nodes being marked
@@ -165,9 +175,9 @@ class RLAgent:
                     graph.selectnode(node_id)  # save for if we do use the dynamically changing graphs
                 # forward pass through the network
                 if restricted_action_space:
-                    q_value_dict, graph_embeddings = self.Q(graph, slot=len(graph.solution)//int(len(graph.teams)/2))
+                    q_value_dict = self.Q(graph, slot=len(graph.solution)//int(len(graph.teams)/2))
                 else:
-                    q_value_dict, graph_embeddings = self.Q(graph)
+                    q_value_dict = self.Q(graph)
                 # get next state and reward
                 reward, done = graph.selectnode(action,restricted_action_space)
                 # compute Q value of next state
@@ -176,23 +186,32 @@ class RLAgent:
                     nextstateQ = torch.zeros(1)
                 else:
                     with torch.no_grad():
-                        for i in range(self.N_STEP_LOOKAHEAD):
+                        if episode > self.IMITATION_LEARNING_EPISODES:
+                            for i in range(self.N_STEP_LOOKAHEAD):
+                                if not done:
+                                    if restricted_action_space:
+                                        nstep_q_value_dict = self.Q(graph, model='target', slot=len(graph.solution) // int(len(graph.teams) / 2))
+                                    else:
+                                        nstep_q_value_dict = self.Q(graph, model='target')
+                                    node_to_add = self.greedy(nstep_q_value_dict)
+                                    reward, done = graph.selectnode(node_to_add,restricted_action_space)
+                                    nsteprewards += self.GAMMA ** i * reward
                             if not done:
                                 if restricted_action_space:
-                                    nstep_q_value_dict, nstep_graph_embeddings = self.Q(graph, model='target', slot=len(graph.solution) // int(len(graph.teams) / 2))
+                                    nextstateQ = self.GAMMA ** (i + 1) * max(
+                                        self.Q(graph, model='target', slot=len(graph.solution) // int(len(graph.teams) / 2)).values())  # get next state Qvalue with target network
                                 else:
-                                    nstep_q_value_dict, nstep_graph_embeddings = self.Q(graph, model='target')
-                                node_to_add = self.greedy(nstep_q_value_dict)
-                                reward, done = graph.selectnode(node_to_add,restricted_action_space)
-                                nsteprewards += self.GAMMA ** i * reward
-                        if not done:
-                            if restricted_action_space:
-                                nextstateQ = self.GAMMA ** (i + 1) * max(
-                                    self.Q(graph, model='target', slot=len(graph.solution) // int(len(graph.teams) / 2))[0].values())  # get next state Qvalue with target network
+                                    nextstateQ = self.GAMMA ** (i + 1) * max(
+                                        self.Q(graph, model='target').values())  # get next state Qvalue with target network
                             else:
-                                nextstateQ = self.GAMMA ** (i + 1) * max(
-                                    self.Q(graph, model='target')[0].values())  # get next state Qvalue with target network
+                                nextstateQ = torch.zeros(1)
                         else:
+                            i=0
+                            while not done:
+                                i+=1
+                                node_to_add = self.target_model_heuristic.greedy_action(graph)
+                                reward, done = graph.selectnode(node_to_add)
+                                nsteprewards += self.GAMMA ** i * reward
                             nextstateQ = torch.zeros(1)
                 loss = self.loss_fn(q_value_dict[action], nextstateQ + nsteprewards + reward) / min(self.BATCH_SIZE,
                                                                                                     len(self.memory))
@@ -214,9 +233,9 @@ class RLAgent:
             while not done:
                 currentslot = len(graph.solution) // int(len(graph.teams) / 2)
                 if restricted_action_space:
-                    q_value_dict, graph_embeddings = self.Q(graph, slot=currentslot)
+                    q_value_dict = self.Q(graph, slot=currentslot)
                 else:
-                    q_value_dict, graph_embeddings = self.Q(graph)
+                    q_value_dict = self.Q(graph)
                 node_to_add = self.greedy(q_value_dict)
                 # Take action, recieve reward
                 reward, done = graph.selectnode(node_to_add,restricted_action_space)

@@ -51,7 +51,7 @@ class Model(nn.Module):
         for edgeset in (node.edges_soft, node.edges_hard):
             for othernode in edgeset:
                 edge = edgeset[othernode]
-                if not graph.nodedict[othernode].selected:
+                if (othernode in self.node_id_to_tensor_index) and (not graph.nodedict[othernode].selected):
                     othernodeindex= self.node_id_to_tensor_index[othernode]
                     innersum+= Ps[othernodeindex].item()*StepsRemaining*(self.theta2(old_mu[othernodeindex])+ edge.weight)
         complexinnersum = torch.zeros(self.p_dim)
@@ -80,21 +80,23 @@ class Model(nn.Module):
                         incurredcost += edge.weight
             IncurredCosts[self.node_id_to_tensor_index[nodeID]] = incurredcost
 
-    def structure2vec(self, graph, t=4):  # t is iterations which is rec'd as 4
-        candidate_nodes = graph.getActions()
-        node_num = len(candidate_nodes)
-        self.node_id_to_tensor_index = {node:i for i,node in enumerate(candidate_nodes)}
+    def structure2vec(self, graph, t=4,nodesubset=None):  # t is iterations which is rec'd as 4
+        if not nodesubset:
+            nodesubset= graph.nodedict
+
+        node_num = len(nodesubset)
+        self.node_id_to_tensor_index = {node:i for i,node in enumerate(nodesubset)}
 
         StepsRemaining = graph.solutionsize - len(graph.solution)
         Ps = torch.full((node_num,1),1/node_num)
         IncurredCosts = torch.zeros(node_num,1)
         mu = torch.zeros(node_num, self.p_dim)
         Qs = torch.zeros(node_num,1)
-        self.computeIncurredCosts(graph, candidate_nodes, IncurredCosts)
+        self.computeIncurredCosts(graph, nodesubset, IncurredCosts)
 
         for _ in range(t):
             old_mu = mu.clone().detach()
-            for nodeID in candidate_nodes:
+            for nodeID in nodesubset:
                 mu[self.node_id_to_tensor_index[nodeID]] = self.forward(nodeID,graph, IncurredCosts, Ps, StepsRemaining, old_mu)
             Qs = self.q_function(mu,graph)
             Ps = torch.softmax(Qs,0).clone().detach()*(1-self.epsilon) + self.epsilon/node_num
@@ -114,7 +116,7 @@ if __name__ == '__main__':
 
     #graphs = [creategraph('Instances/' + file) for file in os.listdir('Instances/')]
     g=pickle.load(open('PreprocessedInstances/ITC2021_Test1.pkl','rb'))
-    p_dim=5
+    p_dim=1
     model=Model(p_dim)
 
     mapping, Qs = model.structure2vec(g)
